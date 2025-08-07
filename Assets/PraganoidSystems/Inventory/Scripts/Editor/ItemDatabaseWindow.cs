@@ -581,9 +581,7 @@ namespace PraganoidSystems.Inventory
                 AssetDatabase.DeleteAsset(assetPath);
                 
                 // Remove the slot from the database
-                var items = GetItemsList();
-                items.Remove(selectedItemSlot);
-                EditorUtility.SetDirty(itemDatabase);
+                itemDatabase.RemoveItemSlot(selectedItemSlot);
                 selectedItemSlot = null;
             }
         }
@@ -811,81 +809,20 @@ namespace PraganoidSystems.Inventory
         {
             if (itemDatabase == null) return new List<ItemDatabase.ItemDatabaseSlot>();
             
-            var items = itemDatabase.GetType().GetField("items", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (items == null) return new List<ItemDatabase.ItemDatabaseSlot>();
-            
-            var itemList = (List<ItemDatabase.ItemDatabaseSlot>)items.GetValue(itemDatabase);
-            if (itemList == null) return new List<ItemDatabase.ItemDatabaseSlot>();
-            
-            var filtered = itemList.Where(item => 
-            {
-                if (item.item == null) return false;
-                
-                bool matchesSearch = string.IsNullOrEmpty(searchText) || 
-                                   item.item.Name.ToLower().Contains(searchText.ToLower()) ||
-                                   item.item.Description.ToLower().Contains(searchText.ToLower());
-                
-                bool matchesRarity = !showFilterRarity || item.item.Rarity == filterRarity;
-                
-                bool matchesType = true;
-                if (showFilterType)
-                {
-                    // If no type filters are selected, show nothing
-                    if (!filterBaseItem && !filterConsumable && !filterEquipment)
-                    {
-                        matchesType = false;
-                    }
-                    else
-                    {
-                        matchesType = false;
-                        
-                        // Check if item matches any of the selected type filters
-                        if (filterConsumable && item.item is Consumable)
-                            matchesType = true;
-                        else if (filterEquipment && item.item is Equipment)
-                            matchesType = true;
-                        else if (filterBaseItem && !(item.item is Consumable) && !(item.item is Equipment))
-                            matchesType = true;
-                    }
-                }
-                
-                bool matchesEquipmentSlot = true;
-                if (showFilterEquipmentSlot && item.item is Equipment equipment)
-                {
-                    // Get equipment slot using reflection
-                    var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var equipmentSlot = (EquipmentSlot)equipmentSlotField?.GetValue(equipment);
-                    
-                    matchesEquipmentSlot = equipmentSlot == filterEquipmentSlot;
-                }
-                else if (showFilterEquipmentSlot && !(item.item is Equipment))
-                {
-                    // If equipment slot filter is active but item is not equipment, don't show it
-                    matchesEquipmentSlot = false;
-                }
-                
-                return matchesSearch && matchesRarity && matchesType && matchesEquipmentSlot;
-            }).ToList();
-            
-            return filtered;
+            return itemDatabase.GetFilteredItems(
+                searchText, 
+                showFilterRarity, filterRarity,
+                showFilterType, filterBaseItem, filterConsumable, filterEquipment,
+                showFilterEquipmentSlot, filterEquipmentSlot
+            );
         }
 
         private void AddEmptySlot()
         {
-            var items = GetItemsList();
-            int newId = GetNextAvailableId();
-            
-            var newSlot = new ItemDatabase.ItemDatabaseSlot
+            if (itemDatabase != null)
             {
-                id = newId,
-                item = null
-            };
-            
-            items.Add(newSlot);
-            EditorUtility.SetDirty(itemDatabase);
+                itemDatabase.AddEmptySlot();
+            }
         }
 
 
@@ -908,7 +845,6 @@ namespace PraganoidSystems.Inventory
 
         private void DeleteItem(int index)
         {
-            var items = GetItemsList();
             var filteredItems = GetFilteredItems();
             
             if (index >= 0 && index < filteredItems.Count)
@@ -919,8 +855,16 @@ namespace PraganoidSystems.Inventory
                     $"Are you sure you want to delete '{itemToDelete.item?.Name ?? "Empty Slot"}' (ID: {itemToDelete.id})?", 
                     "Yes", "Cancel"))
                 {
-                    items.Remove(itemToDelete);
-                    EditorUtility.SetDirty(itemDatabase);
+                    // Delete the asset file if it exists
+                    if (itemToDelete.item != null)
+                    {
+                        string assetPath = AssetDatabase.GetAssetPath(itemToDelete.item);
+                        AssetDatabase.DeleteAsset(assetPath);
+                    }
+                    
+                    // Remove the slot from the database
+                    itemDatabase.RemoveItemSlot(itemToDelete);
+                    selectedItemSlot = null;
                 }
             }
         }
@@ -993,27 +937,16 @@ namespace PraganoidSystems.Inventory
             iconField?.SetValue(newItem, newItemIcon);
             
             // Add to database first to get the ID
-            var items = GetItemsList();
-            int newId = GetNextAvailableId();
-            
-            var newSlot = new ItemDatabase.ItemDatabaseSlot
-            {
-                id = newId,
-                item = newItem
-            };
-            
-            items.Add(newSlot);
+            var newSlot = itemDatabase.AddItem(newItem);
             
             // Save the asset with ID-based naming
-            string fileName = $"{newId} - {newItemName}";
+            string fileName = $"{newSlot.id} - {newItemName}";
             string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{fileName}.asset";
             AssetDatabase.CreateAsset(newItem, path);
             AssetDatabase.SaveAssets();
             
-            EditorUtility.SetDirty(itemDatabase);
-            
             ClearCreateForm();
-            EditorUtility.DisplayDialog("Success", $"Item '{newItemName}' created and added to database with ID {newId}!", "OK");
+            EditorUtility.DisplayDialog("Success", $"Item '{newItemName}' created and added to database with ID {newSlot.id}!", "OK");
         }
 
         private void ClearCreateForm()
@@ -1035,29 +968,9 @@ namespace PraganoidSystems.Inventory
 
         private void ValidateDatabase()
         {
-            var items = GetItemsList();
-            var issues = new List<string>();
+            if (itemDatabase == null) return;
             
-            // Check for duplicate IDs
-            var duplicateIds = items.GroupBy(x => x.id).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-            if (duplicateIds.Count > 0)
-            {
-                issues.Add($"Duplicate IDs found: {string.Join(", ", duplicateIds)}");
-            }
-            
-            // Check for null items
-            var nullItems = items.Where(x => x.item == null).ToList();
-            if (nullItems.Count > 0)
-            {
-                issues.Add($"Empty slots found: {nullItems.Count} slots without assigned items");
-            }
-            
-            // Check for invalid IDs (negative or zero)
-            var invalidIds = items.Where(x => x.id <= 0).ToList();
-            if (invalidIds.Count > 0)
-            {
-                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0 (IDs must start from 1)");
-            }
+            var issues = itemDatabase.ValidateDatabase();
             
             if (issues.Count == 0)
             {
@@ -1072,37 +985,17 @@ namespace PraganoidSystems.Inventory
 
         private void ClearDatabase()
         {
-            var items = GetItemsList();
-            items.Clear();
-            EditorUtility.SetDirty(itemDatabase);
+            if (itemDatabase != null)
+            {
+                itemDatabase.ClearDatabase();
+            }
         }
 
         private List<ItemDatabase.ItemDatabaseSlot> GetItemsList()
         {
             if (itemDatabase == null) return new List<ItemDatabase.ItemDatabaseSlot>();
             
-            var items = itemDatabase.GetType().GetField("items", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
-            if (items == null) return new List<ItemDatabase.ItemDatabaseSlot>();
-            
-            var itemList = (List<ItemDatabase.ItemDatabaseSlot>)items.GetValue(itemDatabase);
-            if (itemList == null)
-            {
-                itemList = new List<ItemDatabase.ItemDatabaseSlot>();
-                items.SetValue(itemDatabase, itemList);
-            }
-            
-            return itemList;
-        }
-
-        private int GetNextAvailableId()
-        {
-            var items = GetItemsList();
-            if (items.Count == 0) return 1;
-            
-            int maxId = items.Max(item => item.id);
-            return Math.Max(maxId + 1, 1); // Ensure ID is always at least 1
+            return itemDatabase.GetItemsList();
         }
     }
 } 
