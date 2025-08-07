@@ -17,6 +17,8 @@ namespace PraganoidSystems.Inventory
         [SerializeField] private int sellPrice;
         [SerializeField] private int buyPrice;
         [SerializeField] private Rarity rarity;
+        [SerializeField] private ItemType itemType = ItemType.Other;
+
         public Action<BaseItem> OnItemUsed;
 
         public string Name => name;
@@ -26,9 +28,10 @@ namespace PraganoidSystems.Inventory
         public int SellPrice => sellPrice;
         public int BuyPrice => buyPrice;
         public Rarity Rarity => rarity;
-        
+        public ItemType ItemType => itemType;
+
         [ContextMenu("Use Item (For Debug)")]
-        public virtual void Use()
+        public virtual void Use() 
         {
             GameLogger.Log(name, "is used");
             OnItemUsed?.Invoke(this);
@@ -44,6 +47,16 @@ namespace PraganoidSystems.Inventory
         Legendary = 4,
         Mythic = 5,
         Unique = 6
+    }
+
+    public enum ItemType
+    {
+        Currency,
+        Materials,
+        Consumable,
+        Equipment,
+        Quest,
+        Other
     }
 }
 
