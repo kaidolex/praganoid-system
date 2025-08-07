@@ -25,6 +25,8 @@ namespace PraganoidSystems.Inventory
         private int newItemMana = 0;
         private int newItemStamina = 0;
         private bool isNewItemConsumable = false;
+        private bool isNewItemEquipment = false;
+        private EquipmentSlot newItemEquipmentSlot = EquipmentSlot.Head;
         private ItemDatabase.ItemDatabaseSlot slotBeingAssigned = null;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
@@ -78,9 +80,9 @@ namespace PraganoidSystems.Inventory
             if (Event.current != null && Event.current.commandName == "ObjectSelectorClosed")
             {
                 var selectedObject = EditorGUIUtility.GetObjectPickerObject();
-                if (selectedObject is BaseItem && slotBeingAssigned != null)
+                if (selectedObject is Item && slotBeingAssigned != null)
                 {
-                    slotBeingAssigned.item = (BaseItem)selectedObject;
+                    slotBeingAssigned.item = (Item)selectedObject;
                     EditorUtility.SetDirty(itemDatabase);
                     slotBeingAssigned = null;
                     Repaint(); // Refresh the window
@@ -187,8 +189,25 @@ namespace PraganoidSystems.Inventory
             
             // Item Type
             EditorGUILayout.LabelField("Item Type", EditorStyles.boldLabel);
-            isNewItemConsumable = EditorGUILayout.Toggle("Is Consumable:", isNewItemConsumable);
             
+            // Radio button behavior for item types
+            bool wasConsumable = isNewItemConsumable;
+            bool wasEquipment = isNewItemEquipment;
+            
+            isNewItemConsumable = EditorGUILayout.Toggle("Consumable", isNewItemConsumable);
+            isNewItemEquipment = EditorGUILayout.Toggle("Equipment", isNewItemEquipment);
+            
+            // Ensure only one can be selected at a time
+            if (isNewItemConsumable && wasEquipment && isNewItemEquipment)
+            {
+                isNewItemEquipment = false;
+            }
+            else if (isNewItemEquipment && wasConsumable && isNewItemConsumable)
+            {
+                isNewItemConsumable = false;
+            }
+            
+            // Type-specific properties
             if (isNewItemConsumable)
             {
                 EditorGUILayout.Space();
@@ -196,6 +215,12 @@ namespace PraganoidSystems.Inventory
                 newItemHealth = EditorGUILayout.IntField("Health:", newItemHealth);
                 newItemMana = EditorGUILayout.IntField("Mana:", newItemMana);
                 newItemStamina = EditorGUILayout.IntField("Stamina:", newItemStamina);
+            }
+            else if (isNewItemEquipment)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Equipment Properties", EditorStyles.boldLabel);
+                newItemEquipmentSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", newItemEquipmentSlot);
             }
             
             EditorGUILayout.Space();
@@ -412,7 +437,7 @@ namespace PraganoidSystems.Inventory
                 SetItemProperty(item, "rarity", newRarity);
             }
             
-            // Consumable-specific properties
+            // Type-specific properties
             if (item is Consumable consumable)
             {
                 EditorGUILayout.Space();
@@ -434,6 +459,22 @@ namespace PraganoidSystems.Inventory
                 if (newStamina != consumable.Stamina)
                 {
                     SetItemProperty(consumable, "stamina", newStamina);
+                }
+            }
+            else if (item is Equipment equipment)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Equipment Properties", EditorStyles.boldLabel);
+                
+                // Get current equipment slot using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var currentSlot = (EquipmentSlot)equipmentSlotField?.GetValue(equipment);
+                
+                EquipmentSlot newSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", currentSlot);
+                if (newSlot != currentSlot)
+                {
+                    SetItemProperty(equipment, "equipmentSlot", newSlot);
                 }
             }
             
@@ -608,7 +649,12 @@ namespace PraganoidSystems.Inventory
                 string itemType = "Empty";
                 if (itemSlot.item != null)
                 {
-                    itemType = itemSlot.item is Consumable ? "Consumable" : "BaseItem";
+                    if (itemSlot.item is Consumable)
+                        itemType = "Consumable";
+                    else if (itemSlot.item is Equipment)
+                        itemType = "Equipment";
+                    else
+                        itemType = "Item";
                 }
                 EditorGUILayout.LabelField(itemType, GUILayout.Width(100));
                 
@@ -751,8 +797,8 @@ namespace PraganoidSystems.Inventory
         private void AssignItemToSlot(ItemDatabase.ItemDatabaseSlot itemSlot)
         {
             slotBeingAssigned = itemSlot;
-            // Open object picker for BaseItem
-            EditorGUIUtility.ShowObjectPicker<BaseItem>(null, false, "", 0);
+            // Open object picker for Item
+            EditorGUIUtility.ShowObjectPicker<Item>(null, false, "", 0);
         }
 
         private void EditItem(ItemDatabase.ItemDatabaseSlot itemSlot)
@@ -799,7 +845,7 @@ namespace PraganoidSystems.Inventory
             }
             
             // Create the item asset
-            BaseItem newItem;
+            Item newItem;
             if (isNewItemConsumable)
             {
                 newItem = CreateInstance<Consumable>();
@@ -816,23 +862,33 @@ namespace PraganoidSystems.Inventory
                 manaField?.SetValue(consumable, newItemMana);
                 staminaField?.SetValue(consumable, newItemStamina);
             }
+            else if (isNewItemEquipment)
+            {
+                newItem = CreateInstance<Equipment>();
+                var equipment = (Equipment)newItem;
+                // Set equipment-specific properties using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                equipmentSlotField?.SetValue(equipment, newItemEquipmentSlot);
+            }
             else
             {
-                newItem = CreateInstance<BaseItem>();
+                newItem = CreateInstance<Item>();
             }
             
             // Set base properties using reflection
-            var nameField = typeof(BaseItem).GetField("name", 
+            var nameField = typeof(Item).GetField("name", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var descField = typeof(BaseItem).GetField("description", 
+            var descField = typeof(Item).GetField("description", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var maxStackField = typeof(BaseItem).GetField("maxStackSize", 
+            var maxStackField = typeof(Item).GetField("maxStackSize", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var sellPriceField = typeof(BaseItem).GetField("sellPrice", 
+            var sellPriceField = typeof(Item).GetField("sellPrice", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var buyPriceField = typeof(BaseItem).GetField("buyPrice", 
+            var buyPriceField = typeof(Item).GetField("buyPrice", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var rarityField = typeof(BaseItem).GetField("rarity", 
+            var rarityField = typeof(Item).GetField("rarity", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             
             nameField?.SetValue(newItem, newItemName);
@@ -843,7 +899,7 @@ namespace PraganoidSystems.Inventory
             rarityField?.SetValue(newItem, newItemRarity);
             
             // Set icon
-            var iconField = typeof(BaseItem).GetField("icon", 
+            var iconField = typeof(Item).GetField("icon", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             iconField?.SetValue(newItem, newItemIcon);
             
@@ -884,6 +940,8 @@ namespace PraganoidSystems.Inventory
             newItemMana = 0;
             newItemStamina = 0;
             isNewItemConsumable = false;
+            isNewItemEquipment = false;
+            newItemEquipmentSlot = EquipmentSlot.Head;
         }
 
         private void ValidateDatabase()

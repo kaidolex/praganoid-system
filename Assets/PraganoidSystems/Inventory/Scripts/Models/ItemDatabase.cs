@@ -13,14 +13,14 @@ namespace PraganoidSystems.Inventory
         public class ItemDatabaseSlot 
         {
             public int id;
-            public BaseItem item;
+            public Item item;
         }
 
         [SerializeField] private List<ItemDatabaseSlot> items;
 
-        public BaseItem GetItem(int id)
+        public Item GetItem(int id)
         {
-            BaseItem item = items.Find(item => item.id == id).item;
+            Item item = items.Find(item => item.id == id).item;
 
             if (item == null)
             {

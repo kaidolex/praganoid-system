@@ -15,7 +15,7 @@ namespace PraganoidSystems.Inventory
             SerializedProperty itemProperty = property.FindPropertyRelative("item");
 
             // Create the display label
-            string displayText = $"{idProperty.intValue} - {(itemProperty.objectReferenceValue != null ? ((BaseItem)itemProperty.objectReferenceValue).Name : "None")}";
+            string displayText = $"{idProperty.intValue} - {(itemProperty.objectReferenceValue != null ? ((Item)itemProperty.objectReferenceValue).Name : "None")}";
             
             // Draw the foldout with our custom label
             property.isExpanded = EditorGUI.Foldout(new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight), property.isExpanded, displayText);
