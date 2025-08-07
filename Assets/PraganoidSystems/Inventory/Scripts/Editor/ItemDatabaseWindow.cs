@@ -1,0 +1,934 @@
+using UnityEngine;
+using UnityEditor;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+
+namespace PraganoidSystems.Inventory
+{
+    public class ItemDatabaseWindow : EditorWindow
+    {
+        private ItemDatabase itemDatabase;
+        private Vector2 scrollPosition;
+        private string searchText = "";
+        private Rarity filterRarity = Rarity.Common;
+        private bool showFilterRarity = false;
+        private int selectedIndex = -1;
+        private bool showCreateItem = false;
+        private string newItemName = "";
+        private string newItemDescription = "";
+        private int newItemMaxStackSize = 1;
+        private int newItemSellPrice = 0;
+        private int newItemBuyPrice = 0;
+        private Rarity newItemRarity = Rarity.Common;
+        private int newItemHealth = 0;
+        private int newItemMana = 0;
+        private int newItemStamina = 0;
+        private bool isNewItemConsumable = false;
+        private ItemDatabase.ItemDatabaseSlot slotBeingAssigned = null;
+        private int selectedTab = 0;
+        private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
+
+        [MenuItem("Window/Praganoid Systems/Item Database Editor")]
+        public static void ShowWindow()
+        {
+            GetWindow<ItemDatabaseWindow>("Item Database Editor");
+        }
+
+        private void OnEnable()
+        {
+            LoadItemDatabase();
+        }
+
+
+
+        private void LoadItemDatabase()
+        {
+            // Try to find existing database
+            string[] guids = AssetDatabase.FindAssets("t:ItemDatabase");
+            if (guids.Length > 0)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+                itemDatabase = AssetDatabase.LoadAssetAtPath<ItemDatabase>(path);
+            }
+            else
+            {
+                // Create new database if none exists
+                CreateNewDatabase();
+            }
+        }
+
+        private void CreateNewDatabase()
+        {
+            itemDatabase = CreateInstance<ItemDatabase>();
+            string path = "Assets/PraganoidSystems/Inventory/Assets/ItemDatabase/Item Database.asset";
+            
+            // Ensure directory exists
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            
+            AssetDatabase.CreateAsset(itemDatabase, path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+
+        private void OnGUI()
+        {
+            // Handle object picker result
+            if (Event.current != null && Event.current.commandName == "ObjectSelectorClosed")
+            {
+                var selectedObject = EditorGUIUtility.GetObjectPickerObject();
+                if (selectedObject is BaseItem && slotBeingAssigned != null)
+                {
+                    slotBeingAssigned.item = (BaseItem)selectedObject;
+                    EditorUtility.SetDirty(itemDatabase);
+                    slotBeingAssigned = null;
+                    Repaint(); // Refresh the window
+                }
+            }
+
+            if (itemDatabase == null)
+            {
+                LoadItemDatabase();
+                return;
+            }
+
+            EditorGUILayout.BeginVertical();
+
+            // Header
+            DrawHeader();
+
+            // Tabs
+            DrawTabs();
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawHeader()
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Item Database Editor", EditorStyles.boldLabel);
+            
+            if (GUILayout.Button("Refresh", GUILayout.Width(80)))
+            {
+                LoadItemDatabase();
+            }
+            
+            if (GUILayout.Button("Save", GUILayout.Width(80)))
+            {
+                EditorUtility.SetDirty(itemDatabase);
+                AssetDatabase.SaveAssets();
+            }
+            
+            EditorGUILayout.EndHorizontal();
+            
+            // Database statistics
+            var items = GetItemsList();
+            int totalSlots = items.Count;
+            int assignedSlots = items.Count(x => x.item != null);
+            int emptySlots = totalSlots - assignedSlots;
+            
+            EditorGUILayout.LabelField($"Total Slots: {totalSlots} | Assigned: {assignedSlots} | Empty: {emptySlots}", EditorStyles.miniLabel);
+            EditorGUILayout.Space();
+        }
+
+        private void DrawTabs()
+        {
+            string[] tabNames = { "Items", "Create Item" };
+            selectedTab = GUILayout.Toolbar(selectedTab, tabNames);
+            
+            EditorGUILayout.Space();
+            
+            switch (selectedTab)
+            {
+                case 0:
+                    DrawItemsTab();
+                    break;
+                case 1:
+                    DrawCreateItemTab();
+                    break;
+            }
+        }
+
+        private void DrawItemsTab()
+        {
+            EditorGUILayout.BeginHorizontal();
+            
+            // Left side - Item List
+            EditorGUILayout.BeginVertical(GUILayout.Width(300));
+            DrawItemList();
+            EditorGUILayout.EndVertical();
+            
+            // Right side - Item Details
+            EditorGUILayout.BeginVertical();
+            DrawItemDetails();
+            EditorGUILayout.EndVertical();
+            
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawCreateItemTab()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Create New Item", EditorStyles.boldLabel);
+            EditorGUILayout.Space();
+            
+            // Basic Properties
+            EditorGUILayout.LabelField("Basic Properties", EditorStyles.boldLabel);
+            newItemName = EditorGUILayout.TextField("Name:", newItemName);
+            newItemDescription = EditorGUILayout.TextField("Description:", newItemDescription);
+            newItemMaxStackSize = EditorGUILayout.IntField("Max Stack Size:", newItemMaxStackSize);
+            newItemSellPrice = EditorGUILayout.IntField("Sell Price:", newItemSellPrice);
+            newItemBuyPrice = EditorGUILayout.IntField("Buy Price:", newItemBuyPrice);
+            newItemRarity = (Rarity)EditorGUILayout.EnumPopup("Rarity:", newItemRarity);
+            
+            EditorGUILayout.Space();
+            
+            // Item Type
+            EditorGUILayout.LabelField("Item Type", EditorStyles.boldLabel);
+            isNewItemConsumable = EditorGUILayout.Toggle("Is Consumable:", isNewItemConsumable);
+            
+            if (isNewItemConsumable)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Consumable Properties", EditorStyles.boldLabel);
+                newItemHealth = EditorGUILayout.IntField("Health:", newItemHealth);
+                newItemMana = EditorGUILayout.IntField("Mana:", newItemMana);
+                newItemStamina = EditorGUILayout.IntField("Stamina:", newItemStamina);
+            }
+            
+            EditorGUILayout.Space();
+            
+            // Action buttons
+            EditorGUILayout.BeginHorizontal();
+            
+            if (GUILayout.Button("Create Item"))
+            {
+                CreateNewItem();
+            }
+            
+            if (GUILayout.Button("Clear Form"))
+            {
+                ClearCreateForm();
+            }
+            
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawSearchAndFilter()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Search & Filter", EditorStyles.boldLabel);
+            
+            // Search
+            searchText = EditorGUILayout.TextField("Search Items:", searchText);
+            
+            // Filter by Rarity
+            showFilterRarity = EditorGUILayout.Toggle("Filter by Rarity", showFilterRarity);
+            if (showFilterRarity)
+            {
+                filterRarity = (Rarity)EditorGUILayout.EnumPopup("Rarity Filter:", filterRarity);
+            }
+            
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
+        }
+
+        private void DrawDatabaseManagement()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Database Management", EditorStyles.boldLabel);
+            
+            EditorGUILayout.BeginHorizontal();
+            
+            if (GUILayout.Button("Add Empty Slot"))
+            {
+                AddEmptySlot();
+            }
+            
+            if (GUILayout.Button("Clear All"))
+            {
+                if (EditorUtility.DisplayDialog("Clear Database", 
+                    "Are you sure you want to clear all items from the database?", 
+                    "Yes", "Cancel"))
+                {
+                    ClearDatabase();
+                }
+            }
+            
+            if (GUILayout.Button("Validate Database"))
+            {
+                ValidateDatabase();
+            }
+            
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
+        }
+
+        private void DrawItemList()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Items", EditorStyles.boldLabel);
+            
+            // Search and Filter
+            DrawSearchAndFilter();
+            
+            var items = GetItemsList();
+            
+            if (items.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No items found. Add some items to get started.", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+            
+            for (int i = 0; i < items.Count; i++)
+            {
+                var itemSlot = items[i];
+                DrawItemListItem(itemSlot, i);
+            }
+            
+            EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawItemListItem(ItemDatabase.ItemDatabaseSlot itemSlot, int index)
+        {
+            EditorGUILayout.BeginHorizontal("box");
+            
+            bool isSelected = selectedItemSlot == itemSlot;
+            bool newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
+            if (newSelected != isSelected)
+            {
+                selectedItemSlot = newSelected ? itemSlot : null;
+            }
+            
+            string itemName = itemSlot.item != null ? itemSlot.item.Name : "Empty Slot";
+            string displayText = $"ID: {itemSlot.id} - {itemName}";
+            
+            if (itemSlot.item != null)
+            {
+                displayText += $" ({itemSlot.item.Rarity})";
+            }
+            
+            EditorGUILayout.LabelField(displayText);
+            
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawItemDetails()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Item Details", EditorStyles.boldLabel);
+            
+            if (selectedItemSlot == null)
+            {
+                EditorGUILayout.HelpBox("Select an item from the list to view and edit its properties.", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+            
+            // Item ID (read-only)
+            EditorGUILayout.LabelField($"ID: {selectedItemSlot.id}");
+            EditorGUILayout.Space();
+            
+            if (selectedItemSlot.item == null)
+            {
+                EditorGUILayout.HelpBox("This slot is empty. Assign an item to edit its properties.", MessageType.Warning);
+                
+                if (GUILayout.Button("Assign Item"))
+                {
+                    AssignItemToSlot(selectedItemSlot);
+                }
+                
+                EditorGUILayout.EndVertical();
+                return;
+            }
+            
+            // Item properties
+            var item = selectedItemSlot.item;
+            
+            // Name
+            string newName = EditorGUILayout.TextField("Name:", item.Name);
+            if (newName != item.Name)
+            {
+                SetItemProperty(item, "name", newName);
+            }
+            
+            // Description
+            string newDescription = EditorGUILayout.TextField("Description:", item.Description);
+            if (newDescription != item.Description)
+            {
+                SetItemProperty(item, "description", newDescription);
+            }
+            
+            // Max Stack Size
+            int newMaxStack = EditorGUILayout.IntField("Max Stack Size:", item.MaxStackSize);
+            if (newMaxStack != item.MaxStackSize)
+            {
+                SetItemProperty(item, "maxStackSize", newMaxStack);
+            }
+            
+            // Sell Price
+            int newSellPrice = EditorGUILayout.IntField("Sell Price:", item.SellPrice);
+            if (newSellPrice != item.SellPrice)
+            {
+                SetItemProperty(item, "sellPrice", newSellPrice);
+            }
+            
+            // Buy Price
+            int newBuyPrice = EditorGUILayout.IntField("Buy Price:", item.BuyPrice);
+            if (newBuyPrice != item.BuyPrice)
+            {
+                SetItemProperty(item, "buyPrice", newBuyPrice);
+            }
+            
+            // Rarity
+            Rarity newRarity = (Rarity)EditorGUILayout.EnumPopup("Rarity:", item.Rarity);
+            if (newRarity != item.Rarity)
+            {
+                SetItemProperty(item, "rarity", newRarity);
+            }
+            
+            // Consumable-specific properties
+            if (item is Consumable consumable)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Consumable Properties", EditorStyles.boldLabel);
+                
+                int newHealth = EditorGUILayout.IntField("Health:", consumable.Health);
+                if (newHealth != consumable.Health)
+                {
+                    SetItemProperty(consumable, "health", newHealth);
+                }
+                
+                int newMana = EditorGUILayout.IntField("Mana:", consumable.Mana);
+                if (newMana != consumable.Mana)
+                {
+                    SetItemProperty(consumable, "mana", newMana);
+                }
+                
+                int newStamina = EditorGUILayout.IntField("Stamina:", consumable.Stamina);
+                if (newStamina != consumable.Stamina)
+                {
+                    SetItemProperty(consumable, "stamina", newStamina);
+                }
+            }
+            
+            EditorGUILayout.Space();
+            
+            // Action buttons
+            EditorGUILayout.BeginHorizontal();
+            
+            if (GUILayout.Button("Delete Item"))
+            {
+                DeleteSelectedItem();
+            }
+            
+            if (GUILayout.Button("Clear Slot"))
+            {
+                ClearSelectedSlot();
+            }
+            
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+        }
+
+        private void SetItemProperty(object item, string propertyName, object value)
+        {
+            var field = item.GetType().GetField(propertyName, 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            field?.SetValue(item, value);
+            EditorUtility.SetDirty((UnityEngine.Object)item);
+            EditorUtility.SetDirty(itemDatabase);
+        }
+
+        private void DeleteSelectedItem()
+        {
+            if (selectedItemSlot == null || selectedItemSlot.item == null) return;
+            
+            if (EditorUtility.DisplayDialog("Delete Item", 
+                $"Are you sure you want to delete '{selectedItemSlot.item.Name}' (ID: {selectedItemSlot.id})?", 
+                "Yes", "Cancel"))
+            {
+                // Delete the asset file
+                string assetPath = AssetDatabase.GetAssetPath(selectedItemSlot.item);
+                AssetDatabase.DeleteAsset(assetPath);
+                
+                // Clear the slot
+                selectedItemSlot.item = null;
+                EditorUtility.SetDirty(itemDatabase);
+                selectedItemSlot = null;
+            }
+        }
+
+        private void ClearSelectedSlot()
+        {
+            if (selectedItemSlot == null) return;
+            
+            if (EditorUtility.DisplayDialog("Clear Slot", 
+                $"Are you sure you want to clear slot ID {selectedItemSlot.id}?", 
+                "Yes", "Cancel"))
+            {
+                selectedItemSlot.item = null;
+                EditorUtility.SetDirty(itemDatabase);
+                selectedItemSlot = null;
+            }
+        }
+
+        private void DrawItemSlot(ItemDatabase.ItemDatabaseSlot itemSlot, int index)
+        {
+            EditorGUILayout.BeginVertical("box");
+            
+            EditorGUILayout.BeginHorizontal();
+            
+            // Selection checkbox
+            bool isSelected = selectedIndex == index;
+            bool newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
+            if (newSelected != isSelected)
+            {
+                selectedIndex = newSelected ? index : -1;
+            }
+            
+            // Item info
+            EditorGUILayout.BeginVertical();
+            
+            string itemName = itemSlot.item != null ? itemSlot.item.Name : "None";
+            string displayText = $"ID: {itemSlot.id} - {itemName}";
+            
+            if (itemSlot.item != null)
+            {
+                displayText += $" ({itemSlot.item.Rarity})";
+            }
+            
+            EditorGUILayout.LabelField(displayText, EditorStyles.boldLabel);
+            
+            if (itemSlot.item != null)
+            {
+                EditorGUILayout.LabelField($"Description: {itemSlot.item.Description}");
+                EditorGUILayout.LabelField($"Max Stack: {itemSlot.item.MaxStackSize} | Sell: {itemSlot.item.SellPrice} | Buy: {itemSlot.item.BuyPrice}");
+            }
+            
+            EditorGUILayout.EndVertical();
+            
+            // Action buttons
+            EditorGUILayout.BeginVertical();
+            
+            if (itemSlot.item == null)
+            {
+                if (GUILayout.Button("Assign", GUILayout.Width(60)))
+                {
+                    AssignItemToSlot(itemSlot);
+                }
+            }
+            else
+            {
+                if (GUILayout.Button("Edit", GUILayout.Width(60)))
+                {
+                    EditItem(itemSlot);
+                }
+            }
+            
+            if (GUILayout.Button("Delete", GUILayout.Width(60)))
+            {
+                DeleteItem(index);
+            }
+            
+            EditorGUILayout.EndVertical();
+            
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawRawDatabaseView()
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.LabelField("Raw Database View", EditorStyles.boldLabel);
+            
+            var items = GetItemsList();
+            
+            if (items.Count == 0)
+            {
+                EditorGUILayout.HelpBox("Database is empty. Add some items to see them here.", MessageType.Info);
+                EditorGUILayout.EndVertical();
+                return;
+            }
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("ID", EditorStyles.boldLabel, GUILayout.Width(50));
+            EditorGUILayout.LabelField("Item Name", EditorStyles.boldLabel, GUILayout.Width(200));
+            EditorGUILayout.LabelField("Type", EditorStyles.boldLabel, GUILayout.Width(100));
+            EditorGUILayout.LabelField("Rarity", EditorStyles.boldLabel, GUILayout.Width(80));
+            EditorGUILayout.LabelField("Max Stack", EditorStyles.boldLabel, GUILayout.Width(80));
+            EditorGUILayout.LabelField("Sell Price", EditorStyles.boldLabel, GUILayout.Width(80));
+            EditorGUILayout.LabelField("Buy Price", EditorStyles.boldLabel, GUILayout.Width(80));
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.Space();
+            
+            for (int i = 0; i < items.Count; i++)
+            {
+                var itemSlot = items[i];
+                
+                EditorGUILayout.BeginHorizontal();
+                
+                // ID
+                EditorGUILayout.LabelField(itemSlot.id.ToString(), GUILayout.Width(50));
+                
+                // Item Name
+                string itemName = itemSlot.item != null ? itemSlot.item.Name : "None";
+                EditorGUILayout.LabelField(itemName, GUILayout.Width(200));
+                
+                // Type
+                string itemType = "Empty";
+                if (itemSlot.item != null)
+                {
+                    itemType = itemSlot.item is Consumable ? "Consumable" : "BaseItem";
+                }
+                EditorGUILayout.LabelField(itemType, GUILayout.Width(100));
+                
+                // Rarity
+                string rarity = "N/A";
+                if (itemSlot.item != null)
+                {
+                    rarity = itemSlot.item.Rarity.ToString();
+                }
+                EditorGUILayout.LabelField(rarity, GUILayout.Width(80));
+                
+                // Max Stack
+                string maxStack = "N/A";
+                if (itemSlot.item != null)
+                {
+                    maxStack = itemSlot.item.MaxStackSize.ToString();
+                }
+                EditorGUILayout.LabelField(maxStack, GUILayout.Width(80));
+                
+                // Sell Price
+                string sellPrice = "N/A";
+                if (itemSlot.item != null)
+                {
+                    sellPrice = itemSlot.item.SellPrice.ToString();
+                }
+                EditorGUILayout.LabelField(sellPrice, GUILayout.Width(80));
+                
+                // Buy Price
+                string buyPrice = "N/A";
+                if (itemSlot.item != null)
+                {
+                    buyPrice = itemSlot.item.BuyPrice.ToString();
+                }
+                EditorGUILayout.LabelField(buyPrice, GUILayout.Width(80));
+                
+                EditorGUILayout.EndHorizontal();
+                
+                // Add a separator line
+                if (i < items.Count - 1)
+                {
+                    EditorGUILayout.Space(2);
+                    EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+                    EditorGUILayout.Space(2);
+                }
+            }
+            
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
+        }
+
+        private void DrawCreateItemSection()
+        {
+            EditorGUILayout.BeginVertical("box");
+            
+            showCreateItem = EditorGUILayout.Foldout(showCreateItem, "Create New Item");
+            
+            if (showCreateItem)
+            {
+                EditorGUI.indentLevel++;
+                
+                newItemName = EditorGUILayout.TextField("Name:", newItemName);
+                newItemDescription = EditorGUILayout.TextField("Description:", newItemDescription);
+                newItemMaxStackSize = EditorGUILayout.IntField("Max Stack Size:", newItemMaxStackSize);
+                newItemSellPrice = EditorGUILayout.IntField("Sell Price:", newItemSellPrice);
+                newItemBuyPrice = EditorGUILayout.IntField("Buy Price:", newItemBuyPrice);
+                newItemRarity = (Rarity)EditorGUILayout.EnumPopup("Rarity:", newItemRarity);
+                
+                isNewItemConsumable = EditorGUILayout.Toggle("Is Consumable:", isNewItemConsumable);
+                
+                if (isNewItemConsumable)
+                {
+                    newItemHealth = EditorGUILayout.IntField("Health:", newItemHealth);
+                    newItemMana = EditorGUILayout.IntField("Mana:", newItemMana);
+                    newItemStamina = EditorGUILayout.IntField("Stamina:", newItemStamina);
+                }
+                
+                EditorGUILayout.Space();
+                
+                EditorGUILayout.BeginHorizontal();
+                
+                if (GUILayout.Button("Create Item"))
+                {
+                    CreateNewItem();
+                }
+                
+                if (GUILayout.Button("Clear Form"))
+                {
+                    ClearCreateForm();
+                }
+                
+                EditorGUILayout.EndHorizontal();
+                
+                EditorGUI.indentLevel--;
+            }
+            
+            EditorGUILayout.EndVertical();
+        }
+
+        private List<ItemDatabase.ItemDatabaseSlot> GetFilteredItems()
+        {
+            var items = itemDatabase.GetType().GetField("items", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            if (items == null) return new List<ItemDatabase.ItemDatabaseSlot>();
+            
+            var itemList = (List<ItemDatabase.ItemDatabaseSlot>)items.GetValue(itemDatabase);
+            if (itemList == null) return new List<ItemDatabase.ItemDatabaseSlot>();
+            
+            var filtered = itemList.Where(item => 
+            {
+                if (item.item == null) return false;
+                
+                bool matchesSearch = string.IsNullOrEmpty(searchText) || 
+                                   item.item.Name.ToLower().Contains(searchText.ToLower()) ||
+                                   item.item.Description.ToLower().Contains(searchText.ToLower());
+                
+                bool matchesRarity = !showFilterRarity || item.item.Rarity == filterRarity;
+                
+                return matchesSearch && matchesRarity;
+            }).ToList();
+            
+            return filtered;
+        }
+
+        private void AddEmptySlot()
+        {
+            var items = GetItemsList();
+            int newId = GetNextAvailableId();
+            
+            var newSlot = new ItemDatabase.ItemDatabaseSlot
+            {
+                id = newId,
+                item = null
+            };
+            
+            items.Add(newSlot);
+            EditorUtility.SetDirty(itemDatabase);
+        }
+
+        private void AssignItemToSlot(ItemDatabase.ItemDatabaseSlot itemSlot)
+        {
+            slotBeingAssigned = itemSlot;
+            // Open object picker for BaseItem
+            EditorGUIUtility.ShowObjectPicker<BaseItem>(null, false, "", 0);
+        }
+
+        private void EditItem(ItemDatabase.ItemDatabaseSlot itemSlot)
+        {
+            if (itemSlot.item == null)
+            {
+                // Show a popup to select an item
+                EditorUtility.DisplayDialog("Assign Item", 
+                    "Please select an item from the Project window and assign it to this slot.", "OK");
+            }
+            else
+            {
+                // Open item editor
+                Selection.activeObject = itemSlot.item;
+                EditorGUIUtility.PingObject(itemSlot.item);
+            }
+        }
+
+        private void DeleteItem(int index)
+        {
+            var items = GetItemsList();
+            var filteredItems = GetFilteredItems();
+            
+            if (index >= 0 && index < filteredItems.Count)
+            {
+                var itemToDelete = filteredItems[index];
+                
+                if (EditorUtility.DisplayDialog("Delete Item", 
+                    $"Are you sure you want to delete '{itemToDelete.item?.Name ?? "Empty Slot"}' (ID: {itemToDelete.id})?", 
+                    "Yes", "Cancel"))
+                {
+                    items.Remove(itemToDelete);
+                    EditorUtility.SetDirty(itemDatabase);
+                }
+            }
+        }
+
+        private void CreateNewItem()
+        {
+            if (string.IsNullOrEmpty(newItemName))
+            {
+                EditorUtility.DisplayDialog("Error", "Item name cannot be empty!", "OK");
+                return;
+            }
+            
+            // Create the item asset
+            BaseItem newItem;
+            if (isNewItemConsumable)
+            {
+                newItem = CreateInstance<Consumable>();
+                var consumable = (Consumable)newItem;
+                // Set consumable-specific properties using reflection
+                var healthField = typeof(Consumable).GetField("health", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var manaField = typeof(Consumable).GetField("mana", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var staminaField = typeof(Consumable).GetField("stamina", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                healthField?.SetValue(consumable, newItemHealth);
+                manaField?.SetValue(consumable, newItemMana);
+                staminaField?.SetValue(consumable, newItemStamina);
+            }
+            else
+            {
+                newItem = CreateInstance<BaseItem>();
+            }
+            
+            // Set base properties using reflection
+            var nameField = typeof(BaseItem).GetField("name", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var descField = typeof(BaseItem).GetField("description", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var maxStackField = typeof(BaseItem).GetField("maxStackSize", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var sellPriceField = typeof(BaseItem).GetField("sellPrice", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var buyPriceField = typeof(BaseItem).GetField("buyPrice", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var rarityField = typeof(BaseItem).GetField("rarity", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            nameField?.SetValue(newItem, newItemName);
+            descField?.SetValue(newItem, newItemDescription);
+            maxStackField?.SetValue(newItem, newItemMaxStackSize);
+            sellPriceField?.SetValue(newItem, newItemSellPrice);
+            buyPriceField?.SetValue(newItem, newItemBuyPrice);
+            rarityField?.SetValue(newItem, newItemRarity);
+            
+            // Save the asset
+            string itemType = isNewItemConsumable ? "Consumable" : "BaseItem";
+            string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{newItemName}_{itemType}.asset";
+            AssetDatabase.CreateAsset(newItem, path);
+            AssetDatabase.SaveAssets();
+            
+            // Add to database
+            var items = GetItemsList();
+            int newId = GetNextAvailableId();
+            
+            var newSlot = new ItemDatabase.ItemDatabaseSlot
+            {
+                id = newId,
+                item = newItem
+            };
+            
+            items.Add(newSlot);
+            EditorUtility.SetDirty(itemDatabase);
+            
+            ClearCreateForm();
+            EditorUtility.DisplayDialog("Success", $"Item '{newItemName}' created and added to database with ID {newId}!", "OK");
+        }
+
+        private void ClearCreateForm()
+        {
+            newItemName = "";
+            newItemDescription = "";
+            newItemMaxStackSize = 1;
+            newItemSellPrice = 0;
+            newItemBuyPrice = 0;
+            newItemRarity = Rarity.Common;
+            newItemHealth = 0;
+            newItemMana = 0;
+            newItemStamina = 0;
+            isNewItemConsumable = false;
+        }
+
+        private void ValidateDatabase()
+        {
+            var items = GetItemsList();
+            var issues = new List<string>();
+            
+            // Check for duplicate IDs
+            var duplicateIds = items.GroupBy(x => x.id).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            if (duplicateIds.Count > 0)
+            {
+                issues.Add($"Duplicate IDs found: {string.Join(", ", duplicateIds)}");
+            }
+            
+            // Check for null items
+            var nullItems = items.Where(x => x.item == null).ToList();
+            if (nullItems.Count > 0)
+            {
+                issues.Add($"Empty slots found: {nullItems.Count} slots without assigned items");
+            }
+            
+            // Check for invalid IDs (negative or zero)
+            var invalidIds = items.Where(x => x.id <= 0).ToList();
+            if (invalidIds.Count > 0)
+            {
+                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0");
+            }
+            
+            if (issues.Count == 0)
+            {
+                EditorUtility.DisplayDialog("Validation Result", "Database is valid! No issues found.", "OK");
+            }
+            else
+            {
+                string message = "Database validation found the following issues:\n\n" + string.Join("\n", issues);
+                EditorUtility.DisplayDialog("Validation Result", message, "OK");
+            }
+        }
+
+        private void ClearDatabase()
+        {
+            var items = GetItemsList();
+            items.Clear();
+            EditorUtility.SetDirty(itemDatabase);
+        }
+
+        private List<ItemDatabase.ItemDatabaseSlot> GetItemsList()
+        {
+            var items = itemDatabase.GetType().GetField("items", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            if (items == null) return new List<ItemDatabase.ItemDatabaseSlot>();
+            
+            var itemList = (List<ItemDatabase.ItemDatabaseSlot>)items.GetValue(itemDatabase);
+            if (itemList == null)
+            {
+                itemList = new List<ItemDatabase.ItemDatabaseSlot>();
+                items.SetValue(itemDatabase, itemList);
+            }
+            
+            return itemList;
+        }
+
+        private int GetNextAvailableId()
+        {
+            var items = GetItemsList();
+            if (items.Count == 0) return 1;
+            
+            int maxId = items.Max(item => item.id);
+            return maxId + 1;
+        }
+    }
+} 
