@@ -28,6 +28,7 @@ namespace PraganoidSystems.Inventory
         private ItemDatabase.ItemDatabaseSlot slotBeingAssigned = null;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
+        private Sprite newItemIcon = null;
 
         [MenuItem("Window/Praganoid Systems/Item Database Editor")]
         public static void ShowWindow()
@@ -176,6 +177,7 @@ namespace PraganoidSystems.Inventory
             EditorGUILayout.LabelField("Basic Properties", EditorStyles.boldLabel);
             newItemName = EditorGUILayout.TextField("Name:", newItemName);
             newItemDescription = EditorGUILayout.TextField("Description:", newItemDescription);
+            newItemIcon = (Sprite)EditorGUILayout.ObjectField("Icon:", newItemIcon, typeof(Sprite), false);
             newItemMaxStackSize = EditorGUILayout.IntField("Max Stack Size:", newItemMaxStackSize);
             newItemSellPrice = EditorGUILayout.IntField("Sell Price:", newItemSellPrice);
             newItemBuyPrice = EditorGUILayout.IntField("Buy Price:", newItemBuyPrice);
@@ -276,20 +278,27 @@ namespace PraganoidSystems.Inventory
             // Search and Filter
             DrawSearchAndFilter();
             
-            var items = GetItemsList();
+            var filteredItems = GetFilteredItems();
             
-            if (items.Count == 0)
+            if (filteredItems.Count == 0)
             {
-                EditorGUILayout.HelpBox("No items found. Add some items to get started.", MessageType.Info);
+                if (GetItemsList().Count == 0)
+                {
+                    EditorGUILayout.HelpBox("No items found. Add some items to get started.", MessageType.Info);
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("No items match your search/filter criteria.", MessageType.Info);
+                }
                 EditorGUILayout.EndVertical();
                 return;
             }
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
             
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < filteredItems.Count; i++)
             {
-                var itemSlot = items[i];
+                var itemSlot = filteredItems[i];
                 DrawItemListItem(itemSlot, i);
             }
             
@@ -366,6 +375,13 @@ namespace PraganoidSystems.Inventory
             if (newDescription != item.Description)
             {
                 SetItemProperty(item, "description", newDescription);
+            }
+            
+            // Icon
+            Sprite newIcon = (Sprite)EditorGUILayout.ObjectField("Icon:", item.Icon, typeof(Sprite), false);
+            if (newIcon != item.Icon)
+            {
+                SetItemProperty(item, "icon", newIcon);
             }
             
             // Max Stack Size
@@ -826,6 +842,11 @@ namespace PraganoidSystems.Inventory
             buyPriceField?.SetValue(newItem, newItemBuyPrice);
             rarityField?.SetValue(newItem, newItemRarity);
             
+            // Set icon
+            var iconField = typeof(BaseItem).GetField("icon", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            iconField?.SetValue(newItem, newItemIcon);
+            
             // Add to database first to get the ID
             var items = GetItemsList();
             int newId = GetNextAvailableId();
@@ -854,6 +875,7 @@ namespace PraganoidSystems.Inventory
         {
             newItemName = "";
             newItemDescription = "";
+            newItemIcon = null;
             newItemMaxStackSize = 1;
             newItemSellPrice = 0;
             newItemBuyPrice = 0;
