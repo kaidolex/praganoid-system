@@ -8,7 +8,7 @@ namespace PraganoidSystems.Inventory
 {
     [Serializable]
     [CreateAssetMenu(fileName = "Base Item", menuName = "Praganoid Systems/Inventory/Items/Base Item")]
-    public class BaseItem : ScriptableObject
+    public class Item : ScriptableObject
     {
         [SerializeField] private new string name;
         [SerializeField] private string description;
@@ -17,7 +17,8 @@ namespace PraganoidSystems.Inventory
         [SerializeField] private int sellPrice;
         [SerializeField] private int buyPrice;
         [SerializeField] private Rarity rarity;
-        public Action<BaseItem> OnItemUsed;
+
+        public Action<Item> OnItemUsed;
 
         public string Name => name;
         public string Description => description;
@@ -26,9 +27,9 @@ namespace PraganoidSystems.Inventory
         public int SellPrice => sellPrice;
         public int BuyPrice => buyPrice;
         public Rarity Rarity => rarity;
-        
+
         [ContextMenu("Use Item (For Debug)")]
-        public virtual void Use()
+        public virtual void Use() 
         {
             GameLogger.Log(name, "is used");
             OnItemUsed?.Invoke(this);
@@ -45,6 +46,8 @@ namespace PraganoidSystems.Inventory
         Mythic = 5,
         Unique = 6
     }
+
+ 
 }
 
 

@@ -5,7 +5,7 @@ namespace PraganoidSystems.Inventory
 {
     [Serializable]
     [CreateAssetMenu(fileName = "Consumable", menuName = "Praganoid Systems/Inventory/Items/Consumable")]
-    public class Consumable : BaseItem
+    public class Consumable : Item
     {
         [SerializeField] private int health;
         [SerializeField] private int mana;

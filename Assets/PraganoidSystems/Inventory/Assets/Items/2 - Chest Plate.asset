@@ -9,13 +9,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f87fd80911723e943b4e810697038904, type: 3}
-  m_Name: Metal Scraps_BaseItem
+  m_Script: {fileID: 11500000, guid: a55ded3ee6a7ef34091aa26052ff0978, type: 3}
+  m_Name: 2 - Chest Plate
   m_EditorClassIdentifier: 
-  name: Metal Scraps
-  description: 'Just '
+  name: Chest Plate
+  description: 
   icon: {fileID: 0}
   maxStackSize: 1
-  sellPrice: 1
-  buyPrice: 1
+  sellPrice: 50
+  buyPrice: 100
   rarity: 0
+  equipmentSlot: 1

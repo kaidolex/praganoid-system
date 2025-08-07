@@ -3,6 +3,7 @@ using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System;
 
 namespace PraganoidSystems.Inventory
 {
@@ -13,6 +14,12 @@ namespace PraganoidSystems.Inventory
         private string searchText = "";
         private Rarity filterRarity = Rarity.Common;
         private bool showFilterRarity = false;
+        private bool showFilterType = false;
+        private bool filterConsumable = false;
+        private bool filterEquipment = false;
+        private bool filterBaseItem = false;
+        private bool showFilterEquipmentSlot = false;
+        private EquipmentSlot filterEquipmentSlot = EquipmentSlot.Head;
         private int selectedIndex = -1;
         private bool showCreateItem = false;
         private string newItemName = "";
@@ -25,9 +32,11 @@ namespace PraganoidSystems.Inventory
         private int newItemMana = 0;
         private int newItemStamina = 0;
         private bool isNewItemConsumable = false;
-        private ItemDatabase.ItemDatabaseSlot slotBeingAssigned = null;
+        private bool isNewItemEquipment = false;
+        private EquipmentSlot newItemEquipmentSlot = EquipmentSlot.Head;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
+        private Sprite newItemIcon = null;
 
         [MenuItem("Window/Praganoid Systems/Item Database Editor")]
         public static void ShowWindow()
@@ -44,6 +53,9 @@ namespace PraganoidSystems.Inventory
 
         private void LoadItemDatabase()
         {
+            // If we already have a database, keep it
+            if (itemDatabase != null) return;
+            
             // Try to find existing database
             string[] guids = AssetDatabase.FindAssets("t:ItemDatabase");
             if (guids.Length > 0)
@@ -51,53 +63,42 @@ namespace PraganoidSystems.Inventory
                 string path = AssetDatabase.GUIDToAssetPath(guids[0]);
                 itemDatabase = AssetDatabase.LoadAssetAtPath<ItemDatabase>(path);
             }
-            else
-            {
-                // Create new database if none exists
-                CreateNewDatabase();
-            }
+            // Don't automatically create a new database - let the user choose
         }
 
         private void CreateNewDatabase()
         {
-            itemDatabase = CreateInstance<ItemDatabase>();
-            string path = "Assets/PraganoidSystems/Inventory/Assets/ItemDatabase/Item Database.asset";
+            string path = EditorUtility.SaveFilePanelInProject(
+                "Create New Item Database",
+                "New Item Database",
+                "asset",
+                "Please enter a name for the new Item Database"
+            );
             
-            // Ensure directory exists
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            
-            AssetDatabase.CreateAsset(itemDatabase, path);
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
+            if (!string.IsNullOrEmpty(path))
+            {
+                itemDatabase = CreateInstance<ItemDatabase>();
+                AssetDatabase.CreateAsset(itemDatabase, path);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                selectedItemSlot = null; // Clear selection for new database
+            }
         }
 
         private void OnGUI()
         {
-            // Handle object picker result
-            if (Event.current != null && Event.current.commandName == "ObjectSelectorClosed")
-            {
-                var selectedObject = EditorGUIUtility.GetObjectPickerObject();
-                if (selectedObject is BaseItem && slotBeingAssigned != null)
-                {
-                    slotBeingAssigned.item = (BaseItem)selectedObject;
-                    EditorUtility.SetDirty(itemDatabase);
-                    slotBeingAssigned = null;
-                    Repaint(); // Refresh the window
-                }
-            }
-
+            // Always try to load a database on first run
             if (itemDatabase == null)
             {
                 LoadItemDatabase();
-                return;
             }
 
             EditorGUILayout.BeginVertical();
 
-            // Header
+            // Always show header (includes database selection and New DB button)
             DrawHeader();
 
-            // Tabs
+            // Only show tabs if we have a database
             DrawTabs();
 
             EditorGUILayout.EndVertical();
@@ -115,24 +116,60 @@ namespace PraganoidSystems.Inventory
             
             if (GUILayout.Button("Save", GUILayout.Width(80)))
             {
-                EditorUtility.SetDirty(itemDatabase);
-                AssetDatabase.SaveAssets();
+                if (itemDatabase != null)
+                {
+                    EditorUtility.SetDirty(itemDatabase);
+                    AssetDatabase.SaveAssets();
+                }
+            }
+            
+            if (GUILayout.Button("New DB", GUILayout.Width(80)))
+            {
+                CreateNewDatabase();
             }
             
             EditorGUILayout.EndHorizontal();
             
-            // Database statistics
-            var items = GetItemsList();
-            int totalSlots = items.Count;
-            int assignedSlots = items.Count(x => x.item != null);
-            int emptySlots = totalSlots - assignedSlots;
+            // Database Selection
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Database:", GUILayout.Width(70));
             
-            EditorGUILayout.LabelField($"Total Slots: {totalSlots} | Assigned: {assignedSlots} | Empty: {emptySlots}", EditorStyles.miniLabel);
+            ItemDatabase newDatabase = (ItemDatabase)EditorGUILayout.ObjectField(itemDatabase, typeof(ItemDatabase), false);
+            if (newDatabase != itemDatabase)
+            {
+                itemDatabase = newDatabase;
+                selectedItemSlot = null; // Clear selection when switching databases
+            }
+            
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space();
+            
+            // Database statistics
+            if (itemDatabase != null)
+            {
+                var items = GetItemsList();
+                int totalSlots = items.Count;
+                int assignedSlots = items.Count(x => x.item != null);
+                int emptySlots = totalSlots - assignedSlots;
+                
+                EditorGUILayout.LabelField($"Database: {itemDatabase.name} | Total Slots: {totalSlots} | Assigned: {assignedSlots} | Empty: {emptySlots}", EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("No database selected. Please select an ItemDatabase asset or create a new one.", MessageType.Warning);
+            }
+            
             EditorGUILayout.Space();
         }
 
         private void DrawTabs()
         {
+            if (itemDatabase == null)
+            {
+                EditorGUILayout.HelpBox("Please select an ItemDatabase asset to begin editing.", MessageType.Info);
+                return;
+            }
+            
             string[] tabNames = { "Items", "Create Item" };
             selectedTab = GUILayout.Toolbar(selectedTab, tabNames);
             
@@ -176,6 +213,7 @@ namespace PraganoidSystems.Inventory
             EditorGUILayout.LabelField("Basic Properties", EditorStyles.boldLabel);
             newItemName = EditorGUILayout.TextField("Name:", newItemName);
             newItemDescription = EditorGUILayout.TextField("Description:", newItemDescription);
+            newItemIcon = (Sprite)EditorGUILayout.ObjectField("Icon:", newItemIcon, typeof(Sprite), false);
             newItemMaxStackSize = EditorGUILayout.IntField("Max Stack Size:", newItemMaxStackSize);
             newItemSellPrice = EditorGUILayout.IntField("Sell Price:", newItemSellPrice);
             newItemBuyPrice = EditorGUILayout.IntField("Buy Price:", newItemBuyPrice);
@@ -185,8 +223,25 @@ namespace PraganoidSystems.Inventory
             
             // Item Type
             EditorGUILayout.LabelField("Item Type", EditorStyles.boldLabel);
-            isNewItemConsumable = EditorGUILayout.Toggle("Is Consumable:", isNewItemConsumable);
             
+            // Radio button behavior for item types
+            bool wasConsumable = isNewItemConsumable;
+            bool wasEquipment = isNewItemEquipment;
+            
+            isNewItemConsumable = EditorGUILayout.Toggle("Consumable", isNewItemConsumable);
+            isNewItemEquipment = EditorGUILayout.Toggle("Equipment", isNewItemEquipment);
+            
+            // Ensure only one can be selected at a time
+            if (isNewItemConsumable && wasEquipment && isNewItemEquipment)
+            {
+                isNewItemEquipment = false;
+            }
+            else if (isNewItemEquipment && wasConsumable && isNewItemConsumable)
+            {
+                isNewItemConsumable = false;
+            }
+            
+            // Type-specific properties
             if (isNewItemConsumable)
             {
                 EditorGUILayout.Space();
@@ -194,6 +249,12 @@ namespace PraganoidSystems.Inventory
                 newItemHealth = EditorGUILayout.IntField("Health:", newItemHealth);
                 newItemMana = EditorGUILayout.IntField("Mana:", newItemMana);
                 newItemStamina = EditorGUILayout.IntField("Stamina:", newItemStamina);
+            }
+            else if (isNewItemEquipment)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Equipment Properties", EditorStyles.boldLabel);
+                newItemEquipmentSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", newItemEquipmentSlot);
             }
             
             EditorGUILayout.Space();
@@ -229,6 +290,39 @@ namespace PraganoidSystems.Inventory
             if (showFilterRarity)
             {
                 filterRarity = (Rarity)EditorGUILayout.EnumPopup("Rarity Filter:", filterRarity);
+            }
+            
+            // Filter by Type
+            showFilterType = EditorGUILayout.Toggle("Filter by Type", showFilterType);
+            if (showFilterType)
+            {
+                EditorGUILayout.LabelField("Item Types:", EditorStyles.miniLabel);
+                EditorGUI.indentLevel++;
+                
+                filterBaseItem = EditorGUILayout.Toggle("Base Items", filterBaseItem);
+                filterConsumable = EditorGUILayout.Toggle("Consumables", filterConsumable);
+                filterEquipment = EditorGUILayout.Toggle("Equipment", filterEquipment);
+                
+                EditorGUI.indentLevel--;
+                
+                // Add "All" and "None" buttons for convenience
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("All", EditorStyles.miniButton))
+                {
+                    filterBaseItem = filterConsumable = filterEquipment = true;
+                }
+                if (GUILayout.Button("None", EditorStyles.miniButton))
+                {
+                    filterBaseItem = filterConsumable = filterEquipment = false;
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+            
+            // Filter by Equipment Slot
+            showFilterEquipmentSlot = EditorGUILayout.Toggle("Filter by Equipment Slot", showFilterEquipmentSlot);
+            if (showFilterEquipmentSlot)
+            {
+                filterEquipmentSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", filterEquipmentSlot);
             }
             
             EditorGUILayout.EndVertical();
@@ -276,20 +370,27 @@ namespace PraganoidSystems.Inventory
             // Search and Filter
             DrawSearchAndFilter();
             
-            var items = GetItemsList();
+            var filteredItems = GetFilteredItems();
             
-            if (items.Count == 0)
+            if (filteredItems.Count == 0)
             {
-                EditorGUILayout.HelpBox("No items found. Add some items to get started.", MessageType.Info);
+                if (GetItemsList().Count == 0)
+                {
+                    EditorGUILayout.HelpBox("No items found. Add some items to get started.", MessageType.Info);
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("No items match your search/filter criteria.", MessageType.Info);
+                }
                 EditorGUILayout.EndVertical();
                 return;
             }
 
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
             
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < filteredItems.Count; i++)
             {
-                var itemSlot = items[i];
+                var itemSlot = filteredItems[i];
                 DrawItemListItem(itemSlot, i);
             }
             
@@ -301,11 +402,12 @@ namespace PraganoidSystems.Inventory
         {
             EditorGUILayout.BeginHorizontal("box");
             
+            // Radio button selection
             bool isSelected = selectedItemSlot == itemSlot;
             bool newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
-            if (newSelected != isSelected)
+            if (newSelected && !isSelected)
             {
-                selectedItemSlot = newSelected ? itemSlot : null;
+                selectedItemSlot = itemSlot;
             }
             
             string itemName = itemSlot.item != null ? itemSlot.item.Name : "Empty Slot";
@@ -339,13 +441,7 @@ namespace PraganoidSystems.Inventory
             
             if (selectedItemSlot.item == null)
             {
-                EditorGUILayout.HelpBox("This slot is empty. Assign an item to edit its properties.", MessageType.Warning);
-                
-                if (GUILayout.Button("Assign Item"))
-                {
-                    AssignItemToSlot(selectedItemSlot);
-                }
-                
+                EditorGUILayout.HelpBox("This slot is empty. No item properties to edit.", MessageType.Info);
                 EditorGUILayout.EndVertical();
                 return;
             }
@@ -365,6 +461,13 @@ namespace PraganoidSystems.Inventory
             if (newDescription != item.Description)
             {
                 SetItemProperty(item, "description", newDescription);
+            }
+            
+            // Icon
+            Sprite newIcon = (Sprite)EditorGUILayout.ObjectField("Icon:", item.Icon, typeof(Sprite), false);
+            if (newIcon != item.Icon)
+            {
+                SetItemProperty(item, "icon", newIcon);
             }
             
             // Max Stack Size
@@ -395,7 +498,7 @@ namespace PraganoidSystems.Inventory
                 SetItemProperty(item, "rarity", newRarity);
             }
             
-            // Consumable-specific properties
+            // Type-specific properties
             if (item is Consumable consumable)
             {
                 EditorGUILayout.Space();
@@ -417,6 +520,22 @@ namespace PraganoidSystems.Inventory
                 if (newStamina != consumable.Stamina)
                 {
                     SetItemProperty(consumable, "stamina", newStamina);
+                }
+            }
+            else if (item is Equipment equipment)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Equipment Properties", EditorStyles.boldLabel);
+                
+                // Get current equipment slot using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var currentSlot = (EquipmentSlot)equipmentSlotField?.GetValue(equipment);
+                
+                EquipmentSlot newSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", currentSlot);
+                if (newSlot != currentSlot)
+                {
+                    SetItemProperty(equipment, "equipmentSlot", newSlot);
                 }
             }
             
@@ -461,8 +580,9 @@ namespace PraganoidSystems.Inventory
                 string assetPath = AssetDatabase.GetAssetPath(selectedItemSlot.item);
                 AssetDatabase.DeleteAsset(assetPath);
                 
-                // Clear the slot
-                selectedItemSlot.item = null;
+                // Remove the slot from the database
+                var items = GetItemsList();
+                items.Remove(selectedItemSlot);
                 EditorUtility.SetDirty(itemDatabase);
                 selectedItemSlot = null;
             }
@@ -520,14 +640,7 @@ namespace PraganoidSystems.Inventory
             // Action buttons
             EditorGUILayout.BeginVertical();
             
-            if (itemSlot.item == null)
-            {
-                if (GUILayout.Button("Assign", GUILayout.Width(60)))
-                {
-                    AssignItemToSlot(itemSlot);
-                }
-            }
-            else
+            if (itemSlot.item != null)
             {
                 if (GUILayout.Button("Edit", GUILayout.Width(60)))
                 {
@@ -590,7 +703,12 @@ namespace PraganoidSystems.Inventory
                 string itemType = "Empty";
                 if (itemSlot.item != null)
                 {
-                    itemType = itemSlot.item is Consumable ? "Consumable" : "BaseItem";
+                    if (itemSlot.item is Consumable)
+                        itemType = "Consumable";
+                    else if (itemSlot.item is Equipment)
+                        itemType = "Equipment";
+                    else
+                        itemType = "Item";
                 }
                 EditorGUILayout.LabelField(itemType, GUILayout.Width(100));
                 
@@ -691,6 +809,8 @@ namespace PraganoidSystems.Inventory
 
         private List<ItemDatabase.ItemDatabaseSlot> GetFilteredItems()
         {
+            if (itemDatabase == null) return new List<ItemDatabase.ItemDatabaseSlot>();
+            
             var items = itemDatabase.GetType().GetField("items", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             
@@ -709,7 +829,45 @@ namespace PraganoidSystems.Inventory
                 
                 bool matchesRarity = !showFilterRarity || item.item.Rarity == filterRarity;
                 
-                return matchesSearch && matchesRarity;
+                bool matchesType = true;
+                if (showFilterType)
+                {
+                    // If no type filters are selected, show nothing
+                    if (!filterBaseItem && !filterConsumable && !filterEquipment)
+                    {
+                        matchesType = false;
+                    }
+                    else
+                    {
+                        matchesType = false;
+                        
+                        // Check if item matches any of the selected type filters
+                        if (filterConsumable && item.item is Consumable)
+                            matchesType = true;
+                        else if (filterEquipment && item.item is Equipment)
+                            matchesType = true;
+                        else if (filterBaseItem && !(item.item is Consumable) && !(item.item is Equipment))
+                            matchesType = true;
+                    }
+                }
+                
+                bool matchesEquipmentSlot = true;
+                if (showFilterEquipmentSlot && item.item is Equipment equipment)
+                {
+                    // Get equipment slot using reflection
+                    var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    var equipmentSlot = (EquipmentSlot)equipmentSlotField?.GetValue(equipment);
+                    
+                    matchesEquipmentSlot = equipmentSlot == filterEquipmentSlot;
+                }
+                else if (showFilterEquipmentSlot && !(item.item is Equipment))
+                {
+                    // If equipment slot filter is active but item is not equipment, don't show it
+                    matchesEquipmentSlot = false;
+                }
+                
+                return matchesSearch && matchesRarity && matchesType && matchesEquipmentSlot;
             }).ToList();
             
             return filtered;
@@ -730,12 +888,7 @@ namespace PraganoidSystems.Inventory
             EditorUtility.SetDirty(itemDatabase);
         }
 
-        private void AssignItemToSlot(ItemDatabase.ItemDatabaseSlot itemSlot)
-        {
-            slotBeingAssigned = itemSlot;
-            // Open object picker for BaseItem
-            EditorGUIUtility.ShowObjectPicker<BaseItem>(null, false, "", 0);
-        }
+
 
         private void EditItem(ItemDatabase.ItemDatabaseSlot itemSlot)
         {
@@ -781,7 +934,7 @@ namespace PraganoidSystems.Inventory
             }
             
             // Create the item asset
-            BaseItem newItem;
+            Item newItem;
             if (isNewItemConsumable)
             {
                 newItem = CreateInstance<Consumable>();
@@ -798,23 +951,33 @@ namespace PraganoidSystems.Inventory
                 manaField?.SetValue(consumable, newItemMana);
                 staminaField?.SetValue(consumable, newItemStamina);
             }
+            else if (isNewItemEquipment)
+            {
+                newItem = CreateInstance<Equipment>();
+                var equipment = (Equipment)newItem;
+                // Set equipment-specific properties using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                equipmentSlotField?.SetValue(equipment, newItemEquipmentSlot);
+            }
             else
             {
-                newItem = CreateInstance<BaseItem>();
+                newItem = CreateInstance<Item>();
             }
             
             // Set base properties using reflection
-            var nameField = typeof(BaseItem).GetField("name", 
+            var nameField = typeof(Item).GetField("name", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var descField = typeof(BaseItem).GetField("description", 
+            var descField = typeof(Item).GetField("description", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var maxStackField = typeof(BaseItem).GetField("maxStackSize", 
+            var maxStackField = typeof(Item).GetField("maxStackSize", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var sellPriceField = typeof(BaseItem).GetField("sellPrice", 
+            var sellPriceField = typeof(Item).GetField("sellPrice", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var buyPriceField = typeof(BaseItem).GetField("buyPrice", 
+            var buyPriceField = typeof(Item).GetField("buyPrice", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var rarityField = typeof(BaseItem).GetField("rarity", 
+            var rarityField = typeof(Item).GetField("rarity", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             
             nameField?.SetValue(newItem, newItemName);
@@ -824,13 +987,12 @@ namespace PraganoidSystems.Inventory
             buyPriceField?.SetValue(newItem, newItemBuyPrice);
             rarityField?.SetValue(newItem, newItemRarity);
             
-            // Save the asset
-            string itemType = isNewItemConsumable ? "Consumable" : "BaseItem";
-            string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{newItemName}_{itemType}.asset";
-            AssetDatabase.CreateAsset(newItem, path);
-            AssetDatabase.SaveAssets();
+            // Set icon
+            var iconField = typeof(Item).GetField("icon", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            iconField?.SetValue(newItem, newItemIcon);
             
-            // Add to database
+            // Add to database first to get the ID
             var items = GetItemsList();
             int newId = GetNextAvailableId();
             
@@ -841,6 +1003,13 @@ namespace PraganoidSystems.Inventory
             };
             
             items.Add(newSlot);
+            
+            // Save the asset with ID-based naming
+            string fileName = $"{newId} - {newItemName}";
+            string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{fileName}.asset";
+            AssetDatabase.CreateAsset(newItem, path);
+            AssetDatabase.SaveAssets();
+            
             EditorUtility.SetDirty(itemDatabase);
             
             ClearCreateForm();
@@ -851,6 +1020,7 @@ namespace PraganoidSystems.Inventory
         {
             newItemName = "";
             newItemDescription = "";
+            newItemIcon = null;
             newItemMaxStackSize = 1;
             newItemSellPrice = 0;
             newItemBuyPrice = 0;
@@ -859,6 +1029,8 @@ namespace PraganoidSystems.Inventory
             newItemMana = 0;
             newItemStamina = 0;
             isNewItemConsumable = false;
+            isNewItemEquipment = false;
+            newItemEquipmentSlot = EquipmentSlot.Head;
         }
 
         private void ValidateDatabase()
@@ -884,7 +1056,7 @@ namespace PraganoidSystems.Inventory
             var invalidIds = items.Where(x => x.id <= 0).ToList();
             if (invalidIds.Count > 0)
             {
-                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0");
+                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0 (IDs must start from 1)");
             }
             
             if (issues.Count == 0)
@@ -907,6 +1079,8 @@ namespace PraganoidSystems.Inventory
 
         private List<ItemDatabase.ItemDatabaseSlot> GetItemsList()
         {
+            if (itemDatabase == null) return new List<ItemDatabase.ItemDatabaseSlot>();
+            
             var items = itemDatabase.GetType().GetField("items", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             
@@ -928,7 +1102,7 @@ namespace PraganoidSystems.Inventory
             if (items.Count == 0) return 1;
             
             int maxId = items.Max(item => item.id);
-            return maxId + 1;
+            return Math.Max(maxId + 1, 1); // Ensure ID is always at least 1
         }
     }
 } 
