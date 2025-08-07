@@ -3,6 +3,7 @@ using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System;
 
 namespace PraganoidSystems.Inventory
 {
@@ -33,7 +34,6 @@ namespace PraganoidSystems.Inventory
         private bool isNewItemConsumable = false;
         private bool isNewItemEquipment = false;
         private EquipmentSlot newItemEquipmentSlot = EquipmentSlot.Head;
-        private ItemDatabase.ItemDatabaseSlot slotBeingAssigned = null;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
         private Sprite newItemIcon = null;
@@ -87,19 +87,6 @@ namespace PraganoidSystems.Inventory
 
         private void OnGUI()
         {
-            // Handle object picker result
-            if (Event.current != null && Event.current.commandName == "ObjectSelectorClosed")
-            {
-                var selectedObject = EditorGUIUtility.GetObjectPickerObject();
-                if (selectedObject is Item && slotBeingAssigned != null)
-                {
-                    slotBeingAssigned.item = (Item)selectedObject;
-                    EditorUtility.SetDirty(itemDatabase);
-                    slotBeingAssigned = null;
-                    Repaint(); // Refresh the window
-                }
-            }
-
             // Always try to load a database on first run
             if (itemDatabase == null)
             {
@@ -454,13 +441,7 @@ namespace PraganoidSystems.Inventory
             
             if (selectedItemSlot.item == null)
             {
-                EditorGUILayout.HelpBox("This slot is empty. Assign an item to edit its properties.", MessageType.Warning);
-                
-                if (GUILayout.Button("Assign Item"))
-                {
-                    AssignItemToSlot(selectedItemSlot);
-                }
-                
+                EditorGUILayout.HelpBox("This slot is empty. No item properties to edit.", MessageType.Info);
                 EditorGUILayout.EndVertical();
                 return;
             }
@@ -659,14 +640,7 @@ namespace PraganoidSystems.Inventory
             // Action buttons
             EditorGUILayout.BeginVertical();
             
-            if (itemSlot.item == null)
-            {
-                if (GUILayout.Button("Assign", GUILayout.Width(60)))
-                {
-                    AssignItemToSlot(itemSlot);
-                }
-            }
-            else
+            if (itemSlot.item != null)
             {
                 if (GUILayout.Button("Edit", GUILayout.Width(60)))
                 {
@@ -914,12 +888,7 @@ namespace PraganoidSystems.Inventory
             EditorUtility.SetDirty(itemDatabase);
         }
 
-        private void AssignItemToSlot(ItemDatabase.ItemDatabaseSlot itemSlot)
-        {
-            slotBeingAssigned = itemSlot;
-            // Open object picker for Item
-            EditorGUIUtility.ShowObjectPicker<Item>(null, false, "", 0);
-        }
+
 
         private void EditItem(ItemDatabase.ItemDatabaseSlot itemSlot)
         {
@@ -1087,7 +1056,7 @@ namespace PraganoidSystems.Inventory
             var invalidIds = items.Where(x => x.id <= 0).ToList();
             if (invalidIds.Count > 0)
             {
-                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0");
+                issues.Add($"Invalid IDs found: {invalidIds.Count} items with ID <= 0 (IDs must start from 1)");
             }
             
             if (issues.Count == 0)
@@ -1133,7 +1102,7 @@ namespace PraganoidSystems.Inventory
             if (items.Count == 0) return 1;
             
             int maxId = items.Max(item => item.id);
-            return maxId + 1;
+            return Math.Max(maxId + 1, 1); // Ensure ID is always at least 1
         }
     }
 } 
