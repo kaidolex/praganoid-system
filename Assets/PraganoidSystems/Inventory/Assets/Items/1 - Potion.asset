@@ -9,14 +9,16 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f87fd80911723e943b4e810697038904, type: 3}
-  m_Name: Base Item
+  m_Script: {fileID: 11500000, guid: d284852857d2cd2469c2bb629f59898f, type: 3}
+  m_Name: 1 - Potion
   m_EditorClassIdentifier: 
-  name: 
+  name: Potion
   description: 
   icon: {fileID: 0}
-  maxStackSize: 0
-  sellPrice: 0
-  buyPrice: 0
+  maxStackSize: 1
+  sellPrice: 20
+  buyPrice: 50
   rarity: 0
-  itemType: 0
+  health: 10
+  mana: 0
+  stamina: 0
