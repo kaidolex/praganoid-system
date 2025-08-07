@@ -301,11 +301,12 @@ namespace PraganoidSystems.Inventory
         {
             EditorGUILayout.BeginHorizontal("box");
             
+            // Radio button selection
             bool isSelected = selectedItemSlot == itemSlot;
             bool newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
-            if (newSelected != isSelected)
+            if (newSelected && !isSelected)
             {
-                selectedItemSlot = newSelected ? itemSlot : null;
+                selectedItemSlot = itemSlot;
             }
             
             string itemName = itemSlot.item != null ? itemSlot.item.Name : "Empty Slot";
@@ -461,8 +462,9 @@ namespace PraganoidSystems.Inventory
                 string assetPath = AssetDatabase.GetAssetPath(selectedItemSlot.item);
                 AssetDatabase.DeleteAsset(assetPath);
                 
-                // Clear the slot
-                selectedItemSlot.item = null;
+                // Remove the slot from the database
+                var items = GetItemsList();
+                items.Remove(selectedItemSlot);
                 EditorUtility.SetDirty(itemDatabase);
                 selectedItemSlot = null;
             }
@@ -824,13 +826,7 @@ namespace PraganoidSystems.Inventory
             buyPriceField?.SetValue(newItem, newItemBuyPrice);
             rarityField?.SetValue(newItem, newItemRarity);
             
-            // Save the asset
-            string itemType = isNewItemConsumable ? "Consumable" : "BaseItem";
-            string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{newItemName}_{itemType}.asset";
-            AssetDatabase.CreateAsset(newItem, path);
-            AssetDatabase.SaveAssets();
-            
-            // Add to database
+            // Add to database first to get the ID
             var items = GetItemsList();
             int newId = GetNextAvailableId();
             
@@ -841,6 +837,13 @@ namespace PraganoidSystems.Inventory
             };
             
             items.Add(newSlot);
+            
+            // Save the asset with ID-based naming
+            string fileName = $"{newId} - {newItemName}";
+            string path = $"Assets/PraganoidSystems/Inventory/Assets/Items/{fileName}.asset";
+            AssetDatabase.CreateAsset(newItem, path);
+            AssetDatabase.SaveAssets();
+            
             EditorUtility.SetDirty(itemDatabase);
             
             ClearCreateForm();
