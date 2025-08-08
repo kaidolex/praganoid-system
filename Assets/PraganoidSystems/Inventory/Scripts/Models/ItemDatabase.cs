@@ -168,7 +168,7 @@ namespace PraganoidSystems.Inventory
         }
 
         public List<ItemDatabaseSlot> GetFilteredItems(string searchText = "", bool filterByRarity = false, Rarity rarity = Rarity.Common, 
-            bool filterByType = false, bool includeBaseItems = true, bool includeConsumables = true, bool includeEquipment = true,
+            bool filterByType = false, bool includeBaseItems = true, bool includeMaterials = true, bool includeConsumables = true, bool includeEquipment = true,
             bool filterByEquipmentSlot = false, EquipmentSlot equipmentSlot = EquipmentSlot.Head)
         {
             if (items == null) return new List<ItemDatabaseSlot>();
@@ -189,7 +189,7 @@ namespace PraganoidSystems.Inventory
                 bool matchesType = true;
                 if (filterByType)
                 {
-                    if (!includeBaseItems && !includeConsumables && !includeEquipment)
+                    if (!includeBaseItems && !includeMaterials && !includeConsumables && !includeEquipment)
                     {
                         matchesType = false;
                     }
@@ -197,11 +197,13 @@ namespace PraganoidSystems.Inventory
                     {
                         matchesType = false;
 
-                        if (includeConsumables && item.item is Consumable)
+                        if (includeMaterials && item.item is Materials)
+                            matchesType = true;
+                        else if (includeConsumables && item.item is Consumable)
                             matchesType = true;
                         else if (includeEquipment && item.item is Equipment)
                             matchesType = true;
-                        else if (includeBaseItems && !(item.item is Consumable) && !(item.item is Equipment))
+                        else if (includeBaseItems && !(item.item is Materials) && !(item.item is Consumable) && !(item.item is Equipment))
                             matchesType = true;
                     }
                 }

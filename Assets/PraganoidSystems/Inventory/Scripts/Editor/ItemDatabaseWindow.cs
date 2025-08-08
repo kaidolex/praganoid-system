@@ -17,6 +17,7 @@ namespace PraganoidSystems.Inventory
         private bool showFilterType = false;
         private bool filterConsumable = false;
         private bool filterEquipment = false;
+        private bool filterMaterials = false;
         private bool filterBaseItem = false;
         private bool showFilterEquipmentSlot = false;
         private EquipmentSlot filterEquipmentSlot = EquipmentSlot.Head;
@@ -33,6 +34,7 @@ namespace PraganoidSystems.Inventory
         private int newItemStamina = 0;
         private bool isNewItemConsumable = false;
         private bool isNewItemEquipment = false;
+        private bool isNewItemMaterial = true; // Default to Materials
         private EquipmentSlot newItemEquipmentSlot = EquipmentSlot.Head;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
@@ -225,21 +227,18 @@ namespace PraganoidSystems.Inventory
             EditorGUILayout.LabelField("Item Type", EditorStyles.boldLabel);
             
             // Radio button behavior for item types
-            bool wasConsumable = isNewItemConsumable;
-            bool wasEquipment = isNewItemEquipment;
+            int currentSelection = 0; // 0 = Material, 1 = Consumable, 2 = Equipment
+            if (isNewItemMaterial) currentSelection = 0;
+            else if (isNewItemConsumable) currentSelection = 1;
+            else if (isNewItemEquipment) currentSelection = 2;
             
-            isNewItemConsumable = EditorGUILayout.Toggle("Consumable", isNewItemConsumable);
-            isNewItemEquipment = EditorGUILayout.Toggle("Equipment", isNewItemEquipment);
+            string[] itemTypeOptions = { "Material", "Consumable", "Equipment" };
+            int newSelection = GUILayout.SelectionGrid(currentSelection, itemTypeOptions, 3);
             
-            // Ensure only one can be selected at a time
-            if (isNewItemConsumable && wasEquipment && isNewItemEquipment)
-            {
-                isNewItemEquipment = false;
-            }
-            else if (isNewItemEquipment && wasConsumable && isNewItemConsumable)
-            {
-                isNewItemConsumable = false;
-            }
+            // Update boolean flags based on selection
+            isNewItemMaterial = (newSelection == 0);
+            isNewItemConsumable = (newSelection == 1);
+            isNewItemEquipment = (newSelection == 2);
             
             // Type-specific properties
             if (isNewItemConsumable)
@@ -300,6 +299,7 @@ namespace PraganoidSystems.Inventory
                 EditorGUI.indentLevel++;
                 
                 filterBaseItem = EditorGUILayout.Toggle("Base Items", filterBaseItem);
+                filterMaterials = EditorGUILayout.Toggle("Materials", filterMaterials);
                 filterConsumable = EditorGUILayout.Toggle("Consumables", filterConsumable);
                 filterEquipment = EditorGUILayout.Toggle("Equipment", filterEquipment);
                 
@@ -309,11 +309,11 @@ namespace PraganoidSystems.Inventory
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("All", EditorStyles.miniButton))
                 {
-                    filterBaseItem = filterConsumable = filterEquipment = true;
+                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = true;
                 }
                 if (GUILayout.Button("None", EditorStyles.miniButton))
                 {
-                    filterBaseItem = filterConsumable = filterEquipment = false;
+                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = false;
                 }
                 EditorGUILayout.EndHorizontal();
             }
@@ -701,7 +701,9 @@ namespace PraganoidSystems.Inventory
                 string itemType = "Empty";
                 if (itemSlot.item != null)
                 {
-                    if (itemSlot.item is Consumable)
+                    if (itemSlot.item is Materials)
+                        itemType = "Material";
+                    else if (itemSlot.item is Consumable)
                         itemType = "Consumable";
                     else if (itemSlot.item is Equipment)
                         itemType = "Equipment";
@@ -812,7 +814,7 @@ namespace PraganoidSystems.Inventory
             return itemDatabase.GetFilteredItems(
                 searchText, 
                 showFilterRarity, filterRarity,
-                showFilterType, filterBaseItem, filterConsumable, filterEquipment,
+                showFilterType, filterBaseItem, filterMaterials, filterConsumable, filterEquipment,
                 showFilterEquipmentSlot, filterEquipmentSlot
             );
         }
@@ -879,7 +881,11 @@ namespace PraganoidSystems.Inventory
             
             // Create the item asset
             Item newItem;
-            if (isNewItemConsumable)
+            if (isNewItemMaterial)
+            {
+                newItem = CreateInstance<Materials>();
+            }
+            else if (isNewItemConsumable)
             {
                 newItem = CreateInstance<Consumable>();
                 var consumable = (Consumable)newItem;
@@ -963,6 +969,7 @@ namespace PraganoidSystems.Inventory
             newItemStamina = 0;
             isNewItemConsumable = false;
             isNewItemEquipment = false;
+            isNewItemMaterial = true; // Reset to default (Materials)
             newItemEquipmentSlot = EquipmentSlot.Head;
         }
 
