@@ -5,6 +5,6 @@ namespace PraganoidSystems.Inventory
 {
     public class InventoryManager : Singleton<InventoryManager>
     {
-
+        [SerializeField] private ItemDatabase database;
     }
 }
