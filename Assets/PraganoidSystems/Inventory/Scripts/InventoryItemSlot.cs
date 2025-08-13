@@ -5,7 +5,6 @@ namespace PraganoidSystems.Inventory
     [System.Serializable]
     public class InventoryItemSlot
     {
-        [SerializeField] private string name = string.Empty;
         [SerializeField] private int currentStackSize = 0;
         [SerializeField] private int maxStackSize = 0;
         [SerializeField] private Item item = null;
@@ -17,9 +16,8 @@ namespace PraganoidSystems.Inventory
         public bool IsFull => currentStackSize >= maxStackSize;
         public bool CanAcceptItem(Item otherItem) => IsEmpty || (item == otherItem && !IsFull);
 
-        public InventoryItemSlot(string name, Item item)
+        public InventoryItemSlot(Item item)
         {
-            this.name = name;
             this.item = item;
             this.maxStackSize = item?.MaxStackSize ?? 0;
             currentStackSize = item != null ? 1 : 0;
@@ -27,7 +25,6 @@ namespace PraganoidSystems.Inventory
 
         public InventoryItemSlot()
         {
-            this.name = string.Empty;
             this.item = null;
             this.maxStackSize = 0;
             currentStackSize = 0;

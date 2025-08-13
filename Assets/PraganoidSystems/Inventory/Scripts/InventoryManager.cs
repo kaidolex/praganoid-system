@@ -15,6 +15,15 @@ namespace PraganoidSystems.Inventory
         [ReadOnly(true)]
         [SerializeField] private List<InventoryItemSlot> inventorySlots = new List<InventoryItemSlot>();
 
+        // Empty Slot Locator
+        private Queue<int> emptySlotIndices = new Queue<int>();
+
+        // Item Locator
+        private Dictionary<Item, List<int>> itemSlotMap = new Dictionary<Item, List<int>>();
+
+        // Occupied Slot Counter
+        private int occupiedSlotCount = 0;
+
         protected override void Start()
         {
             base.Start();
@@ -24,10 +33,55 @@ namespace PraganoidSystems.Inventory
         private void InitializeInventorySlots()
         {
             inventorySlots.Clear();
+            emptySlotIndices.Clear();
+            itemSlotMap.Clear();
+            occupiedSlotCount = 0;
+
             for (int i = 0; i < inventoryCapacity; i++)
             {
                 inventorySlots.Add(new InventoryItemSlot());
+                emptySlotIndices.Enqueue(i);
             }
+        }
+
+        /// <summary>
+        /// Updates caches when a slot is filled
+        /// </summary>
+        private void OnSlotFilled(int slotIndex, Item item)
+        {
+            occupiedSlotCount++;
+            
+            if (!itemSlotMap.ContainsKey(item))
+            {
+                itemSlotMap[item] = new List<int>();
+            }
+            itemSlotMap[item].Add(slotIndex);
+        }
+
+        /// <summary>
+        /// Updates caches when a slot is emptied
+        /// </summary>
+        private void OnSlotEmptied(int slotIndex, Item item)
+        {
+            occupiedSlotCount--;
+            emptySlotIndices.Enqueue(slotIndex);
+            
+            if (itemSlotMap.ContainsKey(item))
+            {
+                itemSlotMap[item].Remove(slotIndex);
+                if (itemSlotMap[item].Count == 0)
+                {
+                    itemSlotMap.Remove(item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the next available empty slot index, O(1) operation
+        /// </summary>
+        private int GetNextEmptySlotIndex()
+        {
+            return emptySlotIndices.Count > 0 ? emptySlotIndices.Dequeue() : -1;
         }
 
         public bool AddItem(Item item, int amount)
@@ -40,11 +94,11 @@ namespace PraganoidSystems.Inventory
             int itemsAdded = 0;
             for (int i = 0; i < amount; i++)
             {
-                // Find first empty slot
-                InventoryItemSlot emptySlot = inventorySlots.Find(slot => slot.IsEmpty);
-                if (emptySlot != null)
+                int emptyIndex = GetNextEmptySlotIndex();
+                if (emptyIndex != -1)
                 {
-                    emptySlot.SetItem(item, 1);
+                    inventorySlots[emptyIndex].SetItem(item, 1);
+                    OnSlotFilled(emptyIndex, item);
                     itemsAdded++;
                 }
                 else
@@ -83,14 +137,18 @@ namespace PraganoidSystems.Inventory
         {
             int remainingAmount = amount;
 
-            foreach (var slot in inventorySlots)
+            // Use cached item slot map for O(1) lookup instead of O(n) search
+            if (itemSlotMap.ContainsKey(item))
             {
-                if (slot.CanAcceptItem(item) && !slot.IsEmpty)
+                var slotsWithItem = itemSlotMap[item];
+                for (int i = 0; i < slotsWithItem.Count && remainingAmount > 0; i++)
                 {
-                    slot.AddStacks(item, remainingAmount, out int remaining);
-                    remainingAmount = remaining;
-                    
-                    if (remainingAmount <= 0) break; // All items added successfully
+                    var slot = inventorySlots[slotsWithItem[i]];
+                    if (slot.CanAcceptItem(item))
+                    {
+                        slot.AddStacks(item, remainingAmount, out int remaining);
+                        remainingAmount = remaining;
+                    }
                 }
             }
 
@@ -107,15 +165,20 @@ namespace PraganoidSystems.Inventory
         {
             int remainingAmount = amount;
 
-            foreach (var slot in inventorySlots)
+            // Use cached empty slot indices for O(1) lookups
+            while (remainingAmount > 0 && emptySlotIndices.Count > 0)
             {
-                if (slot.IsEmpty)
+                int emptyIndex = GetNextEmptySlotIndex();
+                if (emptyIndex != -1)
                 {
                     int itemsToAdd = Mathf.Min(remainingAmount, item.MaxStackSize);
-                    slot.SetItem(item, itemsToAdd);
+                    inventorySlots[emptyIndex].SetItem(item, itemsToAdd);
+                    OnSlotFilled(emptyIndex, item);
                     remainingAmount -= itemsToAdd;
-                    
-                    if (remainingAmount <= 0) break; // All items added successfully
+                }
+                else
+                {
+                    break;
                 }
             }
 
@@ -125,23 +188,23 @@ namespace PraganoidSystems.Inventory
         public bool IsStackable(Item item) => item.MaxStackSize > 1;
 
         /// <summary>
-        /// Gets the current number of occupied slots in the inventory
+        /// Gets the current number of occupied slots in the inventory - O(1) operation
         /// </summary>
         public int GetOccupiedSlotCount()
         {
-            return inventorySlots.Count(slot => !slot.IsEmpty);
+            return occupiedSlotCount;
         }
 
         /// <summary>
-        /// Gets the current number of empty slots in the inventory
+        /// Gets the current number of empty slots in the inventory - O(1) operation
         /// </summary>
         public int GetEmptySlotCount()
         {
-            return inventorySlots.Count(slot => slot.IsEmpty);
+            return inventoryCapacity - occupiedSlotCount;
         }
 
         /// <summary>
-        /// Checks if the inventory has space for a specific item and amount
+        /// Checks if the inventory has space for a specific item and amount - Optimized version
         /// </summary>
         public bool CanAddItem(Item item, int amount)
         {
@@ -155,45 +218,87 @@ namespace PraganoidSystems.Inventory
             // For stackable items, simulate adding to see if there's space
             int remainingAmount = amount;
             
-            // Check existing stacks
-            foreach (var slot in inventorySlots)
+            // Check existing stacks using cached item slot map
+            if (itemSlotMap.ContainsKey(item))
             {
-                if (slot.CanAcceptItem(item) && !slot.IsEmpty)
+                var slotsWithItem = itemSlotMap[item];
+                for (int i = 0; i < slotsWithItem.Count; i++)
                 {
-                    int availableSpace = slot.MaxStackSize - slot.StackSize;
-                    remainingAmount -= availableSpace;
-                    if (remainingAmount <= 0) return true;
+                    var slot = inventorySlots[slotsWithItem[i]];
+                    if (slot.CanAcceptItem(item))
+                    {
+                        int availableSpace = slot.MaxStackSize - slot.StackSize;
+                        remainingAmount -= availableSpace;
+                        if (remainingAmount <= 0) return true;
+                    }
                 }
             }
 
-            // Check empty slots
-            foreach (var slot in inventorySlots)
-            {
-                if (slot.IsEmpty)
-                {
-                    remainingAmount -= item.MaxStackSize;
-                    if (remainingAmount <= 0) return true;
-                }
-            }
+            // Check empty slots using cached count
+            int emptySlots = GetEmptySlotCount();
+            remainingAmount -= emptySlots * item.MaxStackSize;
 
-            return false;
+            return remainingAmount <= 0;
         }
 
         /// <summary>
-        /// Gets all inventory slots (for UI purposes)
+        /// Gets all inventory slots (for UI purposes) - Returns direct reference to avoid allocation
         /// </summary>
         public List<InventoryItemSlot> GetAllSlots()
         {
-            return new List<InventoryItemSlot>(inventorySlots);
+            return inventorySlots;
         }
 
-        public int id = 1;
+        /// <summary>
+        /// Gets a read-only view of inventory slots if you need immutability
+        /// </summary>
+        public IReadOnlyList<InventoryItemSlot> GetSlotsReadOnly()
+        {
+            return inventorySlots.AsReadOnly();
+        }
+
+        /// <summary>
+        /// Removes items from inventory efficiently using cached lookups
+        /// </summary>
+        public bool RemoveItem(Item item, int amount)
+        {
+            if (item == null || amount <= 0 || !itemSlotMap.ContainsKey(item)) return false;
+
+            int remainingToRemove = amount;
+            var slotsWithItem = itemSlotMap[item];
+
+            // Work backwards to avoid index issues when removing from list
+            for (int i = slotsWithItem.Count - 1; i >= 0 && remainingToRemove > 0; i--)
+            {
+                var slotIndex = slotsWithItem[i];
+                var slot = inventorySlots[slotIndex];
+                
+                int canRemove = Mathf.Min(remainingToRemove, slot.StackSize);
+                if (slot.RemoveItem(canRemove))
+                {
+                    remainingToRemove -= canRemove;
+                    
+                    // If slot is now empty, update caches
+                    if (slot.IsEmpty)
+                    {
+                        OnSlotEmptied(slotIndex, item);
+                    }
+                }
+            }
+
+            return remainingToRemove < amount; // Return true if we removed at least some items
+        }
+
+
+        // For debugging purposes
+        public int itemId = 1;
+        public int itemAmount = 100;
 
         private void Update()
         {
             if (Input.GetKeyDown(KeyCode.Space))
             {
-                AddItem(database.GetItem(id), 1);
+                AddItem(database.GetItem(itemId), itemAmount);
             }
         }
     }
