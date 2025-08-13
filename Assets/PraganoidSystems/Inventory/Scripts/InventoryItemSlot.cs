@@ -12,22 +12,36 @@ namespace PraganoidSystems.Inventory
 
         public Item Item => item;
         public int StackSize => currentStackSize;
+        public int MaxStackSize => maxStackSize;
+        public bool IsEmpty => item == null;
+        public bool IsFull => currentStackSize >= maxStackSize;
+        public bool CanAcceptItem(Item otherItem) => IsEmpty || (item == otherItem && !IsFull);
 
         public InventoryItemSlot(string name, Item item)
         {
+            this.name = name;
+            this.item = item;
+            this.maxStackSize = item?.MaxStackSize ?? 0;
+            currentStackSize = item != null ? 1 : 0;
+        }
+
+        public InventoryItemSlot()
+        {
             this.name = string.Empty;
             this.item = null;
-            this.maxStackSize = item.MaxStackSize;
+            this.maxStackSize = 0;
             currentStackSize = 0;
         }
 
 
-        public bool SetItem(Item item)
+        public bool SetItem(Item item, int amount = 1)
         {
             // if the item to add is null then return false
             if (item == null) return false;
 
             this.item = item;
+            this.maxStackSize = item.MaxStackSize;
+            this.currentStackSize = Mathf.Clamp(amount, 1, maxStackSize);
             
             return true;
         }

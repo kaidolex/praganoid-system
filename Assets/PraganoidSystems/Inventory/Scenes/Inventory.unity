@@ -270,7 +270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   database: {fileID: 11400000, guid: e9f04ae1272db5742b53a96e37b064b0, type: 2}
-  inventoryCapacity: 20
+  inventoryCapacity: 3
   inventorySlots: []
 --- !u!4 &1336122204
 Transform:
