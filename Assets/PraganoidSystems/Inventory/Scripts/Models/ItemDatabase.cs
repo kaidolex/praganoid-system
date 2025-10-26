@@ -370,7 +370,7 @@ namespace PraganoidSystems.Inventory
         /// Legacy method for backward compatibility - converts boolean flags to type array
         /// </summary>
         public List<ItemDatabaseSlot> GetFilteredItems(string searchText = "", bool filterByRarity = false, Rarity rarity = Rarity.Common, 
-            bool filterByType = false, bool includeBaseItems = true, bool includeMaterials = true, bool includeConsumables = true, bool includeEquipment = true,
+            bool filterByType = false, bool includeBaseItems = true, bool includeMaterials = true, bool includeConsumables = true, bool includeEquipment = true, bool includeWeapons = true,
             bool filterByEquipmentSlot = false, EquipmentSlot equipmentSlot = EquipmentSlot.Head)
         {
             // Convert boolean flags to type array for backward compatibility
@@ -382,6 +382,7 @@ namespace PraganoidSystems.Inventory
                 if (includeMaterials) typeList.Add(typeof(Materials));
                 if (includeConsumables) typeList.Add(typeof(Consumable));
                 if (includeEquipment) typeList.Add(typeof(Equipment));
+                if (includeWeapons) typeList.Add(typeof(Weapon));
                 allowedTypes = typeList.ToArray();
             }
             

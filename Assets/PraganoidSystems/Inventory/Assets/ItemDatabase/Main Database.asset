@@ -23,3 +23,5 @@ MonoBehaviour:
     item: {fileID: 11400000, guid: abf20c30f1d1201428afdb277ce1ee5b, type: 2}
   - id: 5
     item: {fileID: 11400000, guid: 641191a5536f6e14a8eef6252deb7807, type: 2}
+  - id: 6
+    item: {fileID: 11400000, guid: 7b69f878bb55ba349bf385c4898429f8, type: 2}

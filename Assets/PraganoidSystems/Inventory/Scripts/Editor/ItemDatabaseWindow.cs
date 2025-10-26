@@ -18,6 +18,7 @@ namespace PraganoidSystems.Inventory
         private bool filterConsumable = false;
         private bool filterEquipment = false;
         private bool filterMaterials = false;
+        private bool filterWeapon = false;
         private bool filterBaseItem = false;
         private bool showFilterEquipmentSlot = false;
         private EquipmentSlot filterEquipmentSlot = EquipmentSlot.Head;
@@ -34,8 +35,13 @@ namespace PraganoidSystems.Inventory
         private int newItemStamina = 0;
         private bool isNewItemConsumable = false;
         private bool isNewItemEquipment = false;
+        private bool isNewItemWeapon = false;
         private bool isNewItemMaterial = true; // Default to Materials
         private EquipmentSlot newItemEquipmentSlot = EquipmentSlot.Head;
+        private WeaponType newItemWeaponType = WeaponType.Sword;
+        private int newItemDamage = 10;
+        private float newItemAttackSpeed = 1.0f;
+        private float newItemRange = 1.0f;
         private int selectedTab = 0;
         private ItemDatabase.ItemDatabaseSlot selectedItemSlot = null;
         private Sprite newItemIcon = null;
@@ -227,18 +233,20 @@ namespace PraganoidSystems.Inventory
             EditorGUILayout.LabelField("Item Type", EditorStyles.boldLabel);
             
             // Radio button behavior for item types
-            int currentSelection = 0; // 0 = Material, 1 = Consumable, 2 = Equipment
+            int currentSelection = 0; // 0 = Material, 1 = Consumable, 2 = Equipment, 3 = Weapon
             if (isNewItemMaterial) currentSelection = 0;
             else if (isNewItemConsumable) currentSelection = 1;
             else if (isNewItemEquipment) currentSelection = 2;
+            else if (isNewItemWeapon) currentSelection = 3;
             
-            string[] itemTypeOptions = { "Material", "Consumable", "Equipment" };
-            int newSelection = GUILayout.SelectionGrid(currentSelection, itemTypeOptions, 3);
+            string[] itemTypeOptions = { "Material", "Consumable", "Equipment", "Weapon" };
+            int newSelection = GUILayout.SelectionGrid(currentSelection, itemTypeOptions, 4);
             
             // Update boolean flags based on selection
             isNewItemMaterial = (newSelection == 0);
             isNewItemConsumable = (newSelection == 1);
             isNewItemEquipment = (newSelection == 2);
+            isNewItemWeapon = (newSelection == 3);
             
             // Type-specific properties
             if (isNewItemConsumable)
@@ -254,6 +262,16 @@ namespace PraganoidSystems.Inventory
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Equipment Properties", EditorStyles.boldLabel);
                 newItemEquipmentSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", newItemEquipmentSlot);
+            }
+            else if (isNewItemWeapon)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Weapon Properties", EditorStyles.boldLabel);
+                newItemEquipmentSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", newItemEquipmentSlot);
+                newItemWeaponType = (WeaponType)EditorGUILayout.EnumPopup("Weapon Type:", newItemWeaponType);
+                newItemDamage = EditorGUILayout.IntField("Damage:", newItemDamage);
+                newItemAttackSpeed = EditorGUILayout.FloatField("Attack Speed:", newItemAttackSpeed);
+                newItemRange = EditorGUILayout.FloatField("Range:", newItemRange);
             }
             
             EditorGUILayout.Space();
@@ -302,6 +320,7 @@ namespace PraganoidSystems.Inventory
                 filterMaterials = EditorGUILayout.Toggle("Materials", filterMaterials);
                 filterConsumable = EditorGUILayout.Toggle("Consumables", filterConsumable);
                 filterEquipment = EditorGUILayout.Toggle("Equipment", filterEquipment);
+                filterWeapon = EditorGUILayout.Toggle("Weapons", filterWeapon);
                 
                 EditorGUI.indentLevel--;
                 
@@ -309,11 +328,11 @@ namespace PraganoidSystems.Inventory
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("All", EditorStyles.miniButton))
                 {
-                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = true;
+                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = filterWeapon = true;
                 }
                 if (GUILayout.Button("None", EditorStyles.miniButton))
                 {
-                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = false;
+                    filterBaseItem = filterMaterials = filterConsumable = filterEquipment = filterWeapon = false;
                 }
                 EditorGUILayout.EndHorizontal();
             }
@@ -522,6 +541,51 @@ namespace PraganoidSystems.Inventory
                     SetItemProperty(consumable, "stamina", newStamina);
                 }
             }
+            else if (item is Weapon weapon)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Weapon Properties", EditorStyles.boldLabel);
+                
+                // Get current equipment slot using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var currentSlot = (EquipmentSlot)equipmentSlotField?.GetValue(weapon);
+                
+                EquipmentSlot newSlot = (EquipmentSlot)EditorGUILayout.EnumPopup("Equipment Slot:", currentSlot);
+                if (newSlot != currentSlot)
+                {
+                    SetItemProperty(weapon, "equipmentSlot", newSlot);
+                }
+                
+                // Weapon-specific properties
+                var weaponTypeField = typeof(Weapon).GetField("weaponType", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var currentWeaponType = (WeaponType)weaponTypeField?.GetValue(weapon);
+                
+                WeaponType newWeaponType = (WeaponType)EditorGUILayout.EnumPopup("Weapon Type:", currentWeaponType);
+                if (newWeaponType != currentWeaponType)
+                {
+                    SetItemProperty(weapon, "weaponType", newWeaponType);
+                }
+                
+                int newDamage = EditorGUILayout.IntField("Damage:", weapon.Damage);
+                if (newDamage != weapon.Damage)
+                {
+                    SetItemProperty(weapon, "damage", newDamage);
+                }
+                
+                float newAttackSpeed = EditorGUILayout.FloatField("Attack Speed:", weapon.AttackSpeed);
+                if (newAttackSpeed != weapon.AttackSpeed)
+                {
+                    SetItemProperty(weapon, "attackSpeed", newAttackSpeed);
+                }
+                
+                float newRange = EditorGUILayout.FloatField("Range:", weapon.Range);
+                if (newRange != weapon.Range)
+                {
+                    SetItemProperty(weapon, "range", newRange);
+                }
+            }
             else if (item is Equipment equipment)
             {
                 EditorGUILayout.Space();
@@ -547,11 +611,6 @@ namespace PraganoidSystems.Inventory
             if (GUILayout.Button("Delete Item"))
             {
                 DeleteSelectedItem();
-            }
-            
-            if (GUILayout.Button("Clear Slot"))
-            {
-                ClearSelectedSlot();
             }
             
             EditorGUILayout.EndHorizontal();
@@ -586,19 +645,7 @@ namespace PraganoidSystems.Inventory
             }
         }
 
-        private void ClearSelectedSlot()
-        {
-            if (selectedItemSlot == null) return;
-            
-            if (EditorUtility.DisplayDialog("Clear Slot", 
-                $"Are you sure you want to clear slot ID {selectedItemSlot.id}?", 
-                "Yes", "Cancel"))
-            {
-                selectedItemSlot.item = null;
-                EditorUtility.SetDirty(itemDatabase);
-                selectedItemSlot = null;
-            }
-        }
+
 
         private void DrawItemSlot(ItemDatabase.ItemDatabaseSlot itemSlot, int index)
         {
@@ -701,7 +748,9 @@ namespace PraganoidSystems.Inventory
                 string itemType = "Empty";
                 if (itemSlot.item != null)
                 {
-                    if (itemSlot.item is Materials)
+                    if (itemSlot.item is Weapon)
+                        itemType = "Weapon";
+                    else if (itemSlot.item is Materials)
                         itemType = "Material";
                     else if (itemSlot.item is Consumable)
                         itemType = "Consumable";
@@ -814,7 +863,7 @@ namespace PraganoidSystems.Inventory
             return itemDatabase.GetFilteredItems(
                 searchText, 
                 showFilterRarity, filterRarity,
-                showFilterType, filterBaseItem, filterMaterials, filterConsumable, filterEquipment,
+                showFilterType, filterBaseItem, filterMaterials, filterConsumable, filterEquipment, filterWeapon,
                 showFilterEquipmentSlot, filterEquipmentSlot
             );
         }
@@ -901,6 +950,28 @@ namespace PraganoidSystems.Inventory
                 manaField?.SetValue(consumable, newItemMana);
                 staminaField?.SetValue(consumable, newItemStamina);
             }
+            else if (isNewItemWeapon)
+            {
+                newItem = CreateInstance<Weapon>();
+                var weapon = (Weapon)newItem;
+                // Set weapon-specific properties using reflection
+                var equipmentSlotField = typeof(Equipment).GetField("equipmentSlot", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var weaponTypeField = typeof(Weapon).GetField("weaponType", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var damageField = typeof(Weapon).GetField("damage", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var attackSpeedField = typeof(Weapon).GetField("attackSpeed", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var rangeField = typeof(Weapon).GetField("range", 
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                equipmentSlotField?.SetValue(weapon, newItemEquipmentSlot);
+                weaponTypeField?.SetValue(weapon, newItemWeaponType);
+                damageField?.SetValue(weapon, newItemDamage);
+                attackSpeedField?.SetValue(weapon, newItemAttackSpeed);
+                rangeField?.SetValue(weapon, newItemRange);
+            }
             else if (isNewItemEquipment)
             {
                 newItem = CreateInstance<Equipment>();
@@ -969,8 +1040,13 @@ namespace PraganoidSystems.Inventory
             newItemStamina = 0;
             isNewItemConsumable = false;
             isNewItemEquipment = false;
+            isNewItemWeapon = false;
             isNewItemMaterial = true; // Reset to default (Materials)
             newItemEquipmentSlot = EquipmentSlot.Head;
+            newItemWeaponType = WeaponType.Sword;
+            newItemDamage = 10;
+            newItemAttackSpeed = 1.0f;
+            newItemRange = 1.0f;
         }
 
         private void ValidateDatabase()

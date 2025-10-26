@@ -20,5 +20,7 @@ namespace PraganoidSystems.Inventory
         Feet,
         Hands,
         Neck,
+        LeftHand,
+        RightHand,
     }
 }
