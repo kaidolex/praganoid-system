@@ -9,14 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a55ded3ee6a7ef34091aa26052ff0978, type: 3}
-  m_Name: 2 - Chest Plate
+  m_Script: {fileID: 11500000, guid: eb8bd7aff51d3654a96919a4c78c8268, type: 3}
+  m_Name: 3 - Wood Planks
   m_EditorClassIdentifier: 
-  name: Chest Plate
+  name: Wood Planks
   description: 
   icon: {fileID: 0}
   maxStackSize: 1
-  sellPrice: 50
-  buyPrice: 100
+  sellPrice: 10
+  buyPrice: 20
   rarity: 0
-  equipmentSlot: 1

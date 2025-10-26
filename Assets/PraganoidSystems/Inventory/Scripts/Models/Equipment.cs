@@ -8,6 +8,8 @@ namespace PraganoidSystems.Inventory
     public class Equipment : Item
     {
         [SerializeField] private EquipmentSlot equipmentSlot;
+        
+        public EquipmentSlot EquipmentSlot => equipmentSlot;
     }
 
     public enum EquipmentSlot
@@ -18,5 +20,7 @@ namespace PraganoidSystems.Inventory
         Feet,
         Hands,
         Neck,
+        LeftHand,
+        RightHand,
     }
 }
